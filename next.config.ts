@@ -1,7 +1,8 @@
-import type { NextConfig } from "next";
+﻿import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Não precisa configurar srcDir, Next.js detecta automaticamente
+  reactStrictMode: true,
 };
 
 export default nextConfig;

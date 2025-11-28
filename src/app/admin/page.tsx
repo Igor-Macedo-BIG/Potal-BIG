@@ -1,0 +1,1525 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { LayoutComFunis } from '@/components/layout/LayoutComFunis';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { useTheme } from '@/contexts/ThemeContext';
+import { 
+  Users, 
+  Target, 
+  Layers, 
+  Plus, 
+  Settings, 
+  Shield,
+  Search,
+  Edit,
+  Trash2,
+  Eye,
+  EyeOff,
+  Phone,
+  Handshake,
+  Share2,
+  HeadphonesIcon,
+  Megaphone,
+  ChevronDown,
+  ChevronRight,
+  Sparkles,
+  Palette
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
+
+type UserRole = 'admin' | 'sdr' | 'closer' | 'social-seller' | 'cs' | 'trafego';
+
+interface Usuario {
+  id: string;
+  nome: string;
+  email: string;
+  role: UserRole;
+  ativo: boolean;
+  created_at: string;
+}
+
+interface Funil {
+  id: string;
+  nome: string;
+  descricao?: string;
+  campanhas_count: number;
+  created_at: string;
+}
+
+interface Campanha {
+  id: string;
+  nome: string;
+  tipo?: string;
+  plataforma?: string;
+  ativo?: boolean;
+  funil_id: string;
+  funil_nome?: string;
+  created_at: string;
+  conjuntos_anuncio?: ConjuntoAnuncio[];
+}
+
+interface ConjuntoAnuncio {
+  id: string;
+  nome: string;
+  ativo?: boolean;
+  campanha_id: string;
+  anuncios?: Anuncio[];
+}
+
+interface Anuncio {
+  id: string;
+  nome: string;
+  tipo?: string;
+  conjunto_anuncio_id: string;
+}
+
+const roleLabels: Record<UserRole, string> = {
+  admin: 'Administrador',
+  sdr: 'SDR',
+  closer: 'Closer',
+  'social-seller': 'Social Seller',
+  cs: 'Customer Success',
+  trafego: 'Tráfego'
+};
+
+const roleIcons: Record<UserRole, any> = {
+  admin: Shield,
+  sdr: Phone,
+  closer: Handshake,
+  'social-seller': Share2,
+  cs: HeadphonesIcon,
+  trafego: Megaphone
+};
+
+const roleColors: Record<UserRole, string> = {
+  admin: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+  sdr: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  closer: 'bg-green-500/20 text-green-300 border-green-500/30',
+  'social-seller': 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+  cs: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
+  trafego: 'bg-pink-500/20 text-pink-300 border-pink-500/30'
+};
+
+export default function PainelAdmin() {
+  const { theme, setTheme } = useTheme();
+  const [activeTab, setActiveTab] = useState('usuarios');
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [funis, setFunis] = useState<Funil[]>([]);
+  const [campanhas, setCampanhas] = useState<Campanha[]>([]);
+  const [campanhasPorFunil, setCampanhasPorFunil] = useState<Record<string, Campanha[]>>({});
+  const [funisExpandidos, setFunisExpandidos] = useState<Set<string>>(new Set());
+  const [campanhasExpandidas, setCampanhasExpandidas] = useState<Set<string>>(new Set());
+  const [conjuntosExpandidos, setConjuntosExpandidos] = useState<Set<string>>(new Set());
+  const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [funilSelecionadoParaCampanha, setFunilSelecionadoParaCampanha] = useState<string>('');
+  const [campanhaSelecionadaParaConjunto, setCampanhaSelecionadaParaConjunto] = useState<string>('');
+  const [campanhaSelecionadaParaAnuncio, setCampanhaSelecionadaParaAnuncio] = useState<string>('');
+  const [conjuntoSelecionadoParaAnuncio, setConjuntoSelecionadoParaAnuncio] = useState<string>('');
+
+  // Modal states
+  const [modalUsuarioAberto, setModalUsuarioAberto] = useState(false);
+  const [modalFunilAberto, setModalFunilAberto] = useState(false);
+  const [modalCampanhaAberto, setModalCampanhaAberto] = useState(false);
+  const [modalConjuntoAberto, setModalConjuntoAberto] = useState(false);
+  const [modalAnuncioAberto, setModalAnuncioAberto] = useState(false);
+
+  // Form states
+  const [novoUsuario, setNovoUsuario] = useState({
+    nome: '',
+    email: '',
+    senha: '',
+    role: 'sdr' as UserRole
+  });
+
+  const [novoFunil, setNovoFunil] = useState({
+    nome: '',
+    descricao: ''
+  });
+
+  const [novaCampanha, setNovaCampanha] = useState({
+    nome: '',
+    funil_id: ''
+  });
+
+  const [novoConjunto, setNovoConjunto] = useState({
+    nome: ''
+  });
+
+  const [novoAnuncio, setNovoAnuncio] = useState({
+    nome: '',
+    tipo: 'image',
+    arquivo: null as File | null
+  });
+
+  // Carregar funis e campanhas ao montar
+  useEffect(() => {
+    carregarFunis();
+  }, []);
+
+  const carregarFunis = async () => {
+    setLoading(true);
+    try {
+      const { data: funisData, error: errorFunis } = await supabase
+        .from('funis')
+        .select('*')
+        .eq('empresa_id', '550e8400-e29b-41d4-a716-446655440000')
+        .order('created_at', { ascending: false });
+
+      if (errorFunis) throw errorFunis;
+
+      const { data: campanhasData, error: errorCampanhas } = await supabase
+        .from('campanhas')
+        .select('*')
+        .in('funil_id', funisData?.map(f => f.id) || [])
+        .order('created_at', { ascending: false });
+
+      if (errorCampanhas) throw errorCampanhas;
+
+      // Carregar conjuntos de anúncio
+      const campanhaIds = campanhasData?.map(c => c.id) || [];
+      
+      const { data: conjuntosData } = await supabase
+        .from('conjuntos_anuncio')
+        .select('*')
+        .in('campanha_id', campanhaIds);
+
+      // Carregar anúncios
+      const conjuntoIds = conjuntosData?.map(c => c.id) || [];
+      
+      const { data: anunciosData } = await supabase
+        .from('anuncios')
+        .select('*')
+        .in('conjunto_anuncio_id', conjuntoIds);
+
+      // Associar anúncios aos conjuntos
+      const conjuntosComAnuncios = conjuntosData?.map(conjunto => ({
+        ...conjunto,
+        anuncios: anunciosData?.filter(a => a.conjunto_anuncio_id === conjunto.id) || []
+      })) || [];
+
+      // Associar conjuntos às campanhas
+      const campanhasComConjuntos = campanhasData?.map(campanha => ({
+        ...campanha,
+        conjuntos_anuncio: conjuntosComAnuncios?.filter(c => c.campanha_id === campanha.id) || []
+      })) || [];
+
+      // Agrupar campanhas por funil
+      const agrupadas: Record<string, Campanha[]> = {};
+      campanhasComConjuntos?.forEach(campanha => {
+        if (!agrupadas[campanha.funil_id]) {
+          agrupadas[campanha.funil_id] = [];
+        }
+        agrupadas[campanha.funil_id].push(campanha);
+      });
+
+      // Adicionar contagem de campanhas aos funis
+      const funisComContagem = funisData?.map(funil => ({
+        ...funil,
+        campanhas_count: agrupadas[funil.id]?.length || 0
+      })) || [];
+
+      setFunis(funisComContagem);
+      setCampanhasPorFunil(agrupadas);
+      setCampanhas(campanhasComConjuntos || []);
+    } catch (error) {
+      console.error('Erro ao carregar dados:', error);
+      toast.error('Erro ao carregar dados');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleFunil = (funilId: string) => {
+    const novoSet = new Set(funisExpandidos);
+    if (novoSet.has(funilId)) {
+      novoSet.delete(funilId);
+    } else {
+      novoSet.add(funilId);
+    }
+    setFunisExpandidos(novoSet);
+  };
+
+  const toggleCampanha = (campanhaId: string) => {
+    const novoSet = new Set(campanhasExpandidas);
+    if (novoSet.has(campanhaId)) {
+      novoSet.delete(campanhaId);
+    } else {
+      novoSet.add(campanhaId);
+    }
+    setCampanhasExpandidas(novoSet);
+  };
+
+  const toggleConjunto = (conjuntoId: string) => {
+    const novoSet = new Set(conjuntosExpandidos);
+    if (novoSet.has(conjuntoId)) {
+      novoSet.delete(conjuntoId);
+    } else {
+      novoSet.add(conjuntoId);
+    }
+    setConjuntosExpandidos(novoSet);
+  };
+
+  const handleCriarUsuario = async () => {
+    if (!novoUsuario.nome || !novoUsuario.email || !novoUsuario.senha) {
+      toast.error('Preencha todos os campos obrigatórios');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Aqui você implementaria a criação real via Supabase Auth
+      // Por enquanto, apenas simulando
+      toast.success('Usuário criado com sucesso!');
+      setModalUsuarioAberto(false);
+      setNovoUsuario({ nome: '', email: '', senha: '', role: 'sdr' });
+    } catch (error) {
+      console.error('Erro ao criar usuário:', error);
+      toast.error('Erro ao criar usuário');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCriarFunil = async () => {
+    if (!novoFunil.nome) {
+      toast.error('Nome do funil é obrigatório');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('funis')
+        .insert({
+          nome: novoFunil.nome,
+          descricao: novoFunil.descricao,
+          empresa_id: '550e8400-e29b-41d4-a716-446655440000' // ID fixo da empresa
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast.success('Funil criado com sucesso!');
+      setModalFunilAberto(false);
+      setNovoFunil({ nome: '', descricao: '' });
+      carregarFunis(); // Recarregar lista
+    } catch (error) {
+      console.error('Erro ao criar funil:', error);
+      toast.error('Erro ao criar funil');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCriarCampanha = async () => {
+    if (!novaCampanha.nome || !novaCampanha.funil_id) {
+      toast.error('Nome e funil são obrigatórios');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const dadosCampanha = {
+        nome: novaCampanha.nome,
+        funil_id: novaCampanha.funil_id
+      };
+      
+      console.log('Criando campanha com dados:', dadosCampanha);
+      
+      const { data: campanhaData, error: campanhaError } = await supabase
+        .from('campanhas')
+        .insert(dadosCampanha)
+        .select()
+        .single();
+
+      console.log('Resultado completo:', JSON.stringify({ campanhaData, campanhaError }, null, 2));
+
+      if (campanhaError) {
+        console.error('Erro detalhado do Supabase:', JSON.stringify(campanhaError, null, 2));
+        throw new Error(campanhaError.message || campanhaError.hint || 'Erro desconhecido do Supabase');
+      }
+
+      toast.success('Campanha criada com sucesso!');
+      setModalCampanhaAberto(false);
+      setNovaCampanha({ nome: '', funil_id: '' });
+      setFunilSelecionadoParaCampanha('');
+      carregarFunis(); // Recarregar lista
+    } catch (error: any) {
+      console.error('Erro ao criar campanha:', error);
+      const errorMessage = error?.message || error?.error_description || 'Erro ao criar campanha';
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCriarConjunto = async () => {
+    if (!novoConjunto.nome) {
+      toast.error('Nome do conjunto é obrigatório');
+      return;
+    }
+
+    if (!campanhaSelecionadaParaConjunto) {
+      toast.error('Selecione uma campanha');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const dadosConjunto = {
+        nome: novoConjunto.nome,
+        campanha_id: campanhaSelecionadaParaConjunto,
+        ativo: true
+      };
+      
+      console.log('Criando conjunto com dados:', dadosConjunto);
+      
+      const { data, error } = await supabase
+        .from('conjuntos_anuncio')
+        .insert(dadosConjunto)
+        .select()
+        .single();
+
+      console.log('Resultado completo:', JSON.stringify({ data, error }, null, 2));
+
+      if (error) {
+        console.error('Erro detalhado do Supabase:', JSON.stringify(error, null, 2));
+        throw new Error(error.message || error.hint || 'Erro desconhecido do Supabase');
+      }
+
+      toast.success('Conjunto de anúncio criado com sucesso!');
+      setModalConjuntoAberto(false);
+      setNovoConjunto({ nome: '' });
+      setCampanhaSelecionadaParaConjunto('');
+      carregarFunis(); // Recarregar lista
+    } catch (error: any) {
+      console.error('Erro ao criar conjunto:', error);
+      const errorMessage = error?.message || error?.error_description || 'Erro ao criar conjunto';
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCriarAnuncio = async () => {
+    if (!novoAnuncio.nome) {
+      toast.error('Nome do anúncio é obrigatório');
+      return;
+    }
+
+    if (!conjuntoSelecionadoParaAnuncio) {
+      toast.error('Selecione um conjunto de anúncio');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const dadosAnuncio = {
+        nome: novoAnuncio.nome,
+        tipo: novoAnuncio.tipo,
+        conjunto_anuncio_id: conjuntoSelecionadoParaAnuncio
+      };
+      
+      console.log('Criando anúncio com dados:', dadosAnuncio);
+      
+      const { data, error } = await supabase
+        .from('anuncios')
+        .insert(dadosAnuncio)
+        .select()
+        .single();
+
+      console.log('Resultado completo:', JSON.stringify({ data, error }, null, 2));
+
+      if (error) {
+        console.error('Erro detalhado do Supabase:', JSON.stringify(error, null, 2));
+        throw new Error(error.message || error.hint || 'Erro desconhecido do Supabase');
+      }
+
+      toast.success('Anúncio criado com sucesso!');
+      
+      // Expandir o conjunto automaticamente para mostrar o anúncio
+      const novoSet = new Set(conjuntosExpandidos);
+      novoSet.add(conjuntoSelecionadoParaAnuncio);
+      setConjuntosExpandidos(novoSet);
+      
+      const conjuntoTemp = conjuntoSelecionadoParaAnuncio;
+      setModalAnuncioAberto(false);
+      setNovoAnuncio({ nome: '', tipo: 'image', arquivo: null });
+      setCampanhaSelecionadaParaAnuncio('');
+      setConjuntoSelecionadoParaAnuncio('');
+      
+      await carregarFunis(); // Recarregar lista
+      
+      // Expandir novamente após recarregar (caso o estado seja resetado)
+      const novoSetFinal = new Set(conjuntosExpandidos);
+      novoSetFinal.add(conjuntoTemp);
+      setConjuntosExpandidos(novoSetFinal);
+    } catch (error: any) {
+      console.error('Erro ao criar anúncio:', error);
+      const errorMessage = error?.message || error?.error_description || 'Erro ao criar anúncio';
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <LayoutComFunis>
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
+        <div className="max-w-7xl mx-auto">
+          {/* Header */}
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="h-12 w-12 bg-gradient-to-br from-purple-600 to-pink-600 rounded-xl flex items-center justify-center">
+                <Shield className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-white">Painel Administrativo</h1>
+                <p className="text-gray-400">Gerencie usuários, funis e campanhas</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+            <TabsList className="bg-gray-800/50 border border-gray-700">
+              <TabsTrigger value="usuarios" className="data-[state=active]:bg-purple-600">
+                <Users className="h-4 w-4 mr-2" />
+                Usuários
+              </TabsTrigger>
+              <TabsTrigger value="funis" className="data-[state=active]:bg-cyan-600">
+                <Layers className="h-4 w-4 mr-2" />
+                Funis
+              </TabsTrigger>
+              <TabsTrigger value="aparencia" className="data-[state=active]:bg-pink-600">
+                <Palette className="h-4 w-4 mr-2" />
+                Aparência
+              </TabsTrigger>
+              <TabsTrigger value="configuracoes" className="data-[state=active]:bg-gray-600">
+                <Settings className="h-4 w-4 mr-2" />
+                Configurações
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Tab: Usuários */}
+            <TabsContent value="usuarios" className="space-y-4">
+              <Card className="bg-gray-800/50 border-gray-700">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-white flex items-center gap-2">
+                        <Users className="h-5 w-5" />
+                        Gerenciar Usuários
+                      </CardTitle>
+                      <CardDescription className="text-gray-400">
+                        Crie e gerencie usuários do sistema
+                      </CardDescription>
+                    </div>
+                    <Button
+                      onClick={() => setModalUsuarioAberto(true)}
+                      className="bg-purple-600 hover:bg-purple-700"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Novo Usuário
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Search */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Buscar usuários..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 bg-gray-900 border-gray-600 text-white"
+                    />
+                  </div>
+
+                  {/* User List */}
+                  <div className="grid gap-3">
+                    {/* Mock data - substituir por dados reais */}
+                    {[
+                      { id: '1', nome: 'Admin Sistema', email: 'admin@exemplo.com', role: 'admin' as UserRole, ativo: true },
+                      { id: '2', nome: 'João Silva', email: 'joao@exemplo.com', role: 'sdr' as UserRole, ativo: true },
+                      { id: '3', nome: 'Maria Santos', email: 'maria@exemplo.com', role: 'closer' as UserRole, ativo: true },
+                    ].map((usuario) => {
+                      const IconRole = roleIcons[usuario.role];
+                      return (
+                        <div
+                          key={usuario.id}
+                          className="bg-gray-900/50 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full flex items-center justify-center">
+                                <IconRole className="h-5 w-5 text-white" />
+                              </div>
+                              <div>
+                                <h4 className="text-white font-medium">{usuario.nome}</h4>
+                                <p className="text-sm text-gray-400">{usuario.email}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge className={roleColors[usuario.role]}>
+                                {roleLabels[usuario.role]}
+                              </Badge>
+                              <Badge variant={usuario.ativo ? 'default' : 'secondary'}>
+                                {usuario.ativo ? 'Ativo' : 'Inativo'}
+                              </Badge>
+                              <Button size="sm" variant="ghost" className="text-gray-400 hover:text-white">
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Tab: Funis */}
+            <TabsContent value="funis" className="space-y-4">
+              <Card className="bg-gray-800/50 border-gray-700">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-white flex items-center gap-2">
+                        <Layers className="h-5 w-5" />
+                        Gerenciar Funis
+                      </CardTitle>
+                      <CardDescription className="text-gray-400">
+                        Crie e organize seus funis de vendas
+                      </CardDescription>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        onClick={() => setModalFunilAberto(true)}
+                        className="bg-cyan-600 hover:bg-cyan-700"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Novo Funil
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setFunilSelecionadoParaCampanha('');
+                          setNovaCampanha({ nome: '', funil_id: '' });
+                          setModalCampanhaAberto(true);
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Nova Campanha
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setCampanhaSelecionadaParaConjunto('');
+                          setModalConjuntoAberto(true);
+                        }}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Novo Conjunto
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setConjuntoSelecionadoParaAnuncio('');
+                          setModalAnuncioAberto(true);
+                        }}
+                        className="bg-purple-600 hover:bg-purple-700"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Novo Anúncio
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-3">
+                    {funis.map((funil) => {
+                      const isExpanded = funisExpandidos.has(funil.id);
+                      const campanhasDeste = campanhasPorFunil[funil.id] || [];
+                      
+                      return (
+                        <div key={funil.id} className="space-y-2">
+                          <div
+                            className="bg-gray-900/50 border border-gray-700 rounded-lg p-4 hover:border-orange-600/50 transition-colors cursor-pointer"
+                            onClick={() => toggleFunil(funil.id)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2 flex-1">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0 text-gray-400"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleFunil(funil.id);
+                                  }}
+                                >
+                                  {isExpanded ? (
+                                    <ChevronDown className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4" />
+                                  )}
+                                </Button>
+                                <div>
+                                  <h4 className="text-white font-medium flex items-center gap-2">
+                                    <Layers className="h-4 w-4 text-cyan-400" />
+                                    {funil.nome}
+                                  </h4>
+                                  {funil.descricao && (
+                                    <p className="text-sm text-gray-400 mt-1">{funil.descricao}</p>
+                                  )}
+                                  <div className="flex items-center gap-2 mt-2">
+                                    <Badge variant="outline" className="text-xs text-gray-300 border-gray-600">
+                                      {funil.campanhas_count} campanhas
+                                    </Badge>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost" 
+                                  className="text-cyan-400 hover:text-cyan-300"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setFunilSelecionadoParaCampanha(funil.id);
+                                    setNovaCampanha({ nome: '', funil_id: funil.id });
+                                    setModalCampanhaAberto(true);
+                                  }}
+                                  title="Adicionar campanha neste funil"
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </Button>
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost" 
+                                  className="text-gray-400 hover:text-white"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost" 
+                                  className="text-red-400 hover:text-red-300"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Campanhas do funil */}
+                          {isExpanded && campanhasDeste.length > 0 && (
+                            <div className="ml-8 space-y-2 border-l-2 border-orange-600/30 pl-4">
+                              {campanhasDeste.map((campanha) => {
+                                const campanhaExpandida = campanhasExpandidas.has(campanha.id);
+                                const temConjuntos = campanha.conjuntos_anuncio && campanha.conjuntos_anuncio.length > 0;
+                                
+                                return (
+                                  <div key={campanha.id}>
+                                    <div
+                                      className="bg-gray-900/30 border border-gray-700/50 rounded-lg p-3 hover:border-blue-600/50 transition-colors cursor-pointer"
+                                      onClick={() => toggleCampanha(campanha.id)}
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                          {temConjuntos && (
+                                            campanhaExpandida ? 
+                                              <ChevronDown className="h-3 w-3 text-gray-400" /> : 
+                                              <ChevronRight className="h-3 w-3 text-gray-400" />
+                                          )}
+                                          <h5 className="text-white text-sm font-medium flex items-center gap-2">
+                                            <Target className="h-3 w-3 text-blue-400" />
+                                            {campanha.nome}
+                                          </h5>
+                                          {temConjuntos && (
+                                            <span className="text-xs text-gray-500">
+                                              ({campanha.conjuntos_anuncio?.length || 0} conjuntos)
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <Button 
+                                            size="sm" 
+                                            variant="ghost" 
+                                            className="text-green-400 hover:text-green-300 h-6 w-6 p-0"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setCampanhaSelecionadaParaConjunto(campanha.id);
+                                              setModalConjuntoAberto(true);
+                                            }}
+                                            title="Adicionar conjunto"
+                                          >
+                                            <Plus className="h-3 w-3" />
+                                          </Button>
+                                          <Button 
+                                            size="sm" 
+                                            variant="ghost" 
+                                            className="h-6 w-6 p-0 text-gray-400 hover:text-white"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <Edit className="h-3 w-3" />
+                                          </Button>
+                                          <Button 
+                                            size="sm" 
+                                            variant="ghost" 
+                                            className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <Trash2 className="h-3 w-3" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Conjuntos da campanha */}
+                                    {campanhaExpandida && temConjuntos && (
+                                      <div className="ml-6 mt-2 space-y-2 border-l-2 border-blue-600/30 pl-4">
+                                        {campanha.conjuntos_anuncio!.map((conjunto) => {
+                                          const conjuntoExpandido = conjuntosExpandidos.has(conjunto.id);
+                                          const temAnuncios = conjunto.anuncios && conjunto.anuncios.length > 0;
+                                          
+                                          return (
+                                            <div key={conjunto.id}>
+                                              <div 
+                                                className="bg-gray-900/20 border border-gray-700/30 rounded-md p-2 hover:border-green-600/40 transition-colors cursor-pointer"
+                                                onClick={() => toggleConjunto(conjunto.id)}
+                                              >
+                                                <div className="flex items-center justify-between">
+                                                  <div className="flex items-center gap-2">
+                                                    {temAnuncios && (
+                                                      conjuntoExpandido ? 
+                                                        <ChevronDown className="h-2.5 w-2.5 text-gray-400" /> : 
+                                                        <ChevronRight className="h-2.5 w-2.5 text-gray-400" />
+                                                    )}
+                                                    <Users className="h-3 w-3 text-green-400" />
+                                                    <span className="text-white text-xs">{conjunto.nome}</span>
+                                                    {temAnuncios && (
+                                                      <span className="text-xs text-gray-500">
+                                                        ({conjunto.anuncios?.length || 0} anúncios)
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                  <div className="flex items-center gap-1">
+                                                    <Button 
+                                                      size="sm" 
+                                                      variant="ghost" 
+                                                      className="h-5 w-5 p-0 text-purple-400 hover:text-purple-300"
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setConjuntoSelecionadoParaAnuncio(conjunto.id);
+                                                        setModalAnuncioAberto(true);
+                                                      }}
+                                                      title="Adicionar anúncio"
+                                                    >
+                                                      <Plus className="h-2.5 w-2.5" />
+                                                    </Button>
+                                                    {conjunto.ativo !== undefined && (
+                                                      <Badge variant={conjunto.ativo ? 'default' : 'secondary'} className="text-xs h-5">
+                                                        {conjunto.ativo ? 'Ativo' : 'Inativo'}
+                                                      </Badge>
+                                                    )}
+                                                    <Button 
+                                                      size="sm" 
+                                                      variant="ghost" 
+                                                      className="h-5 w-5 p-0 text-gray-400 hover:text-white"
+                                                      onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                      <Edit className="h-2.5 w-2.5" />
+                                                    </Button>
+                                                    <Button 
+                                                      size="sm" 
+                                                      variant="ghost" 
+                                                      className="h-5 w-5 p-0 text-red-400 hover:text-red-300"
+                                                      onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                      <Trash2 className="h-2.5 w-2.5" />
+                                                    </Button>
+                                                  </div>
+                                                </div>
+                                              </div>
+
+                                              {/* Anúncios do conjunto */}
+                                              {conjuntoExpandido && temAnuncios && (
+                                                <div className="ml-4 mt-1 space-y-1 border-l-2 border-green-600/30 pl-3">
+                                                  {conjunto.anuncios!.map((anuncio) => (
+                                                    <div 
+                                                      key={anuncio.id}
+                                                      className="bg-gray-900/10 border border-gray-700/20 rounded p-1.5 hover:border-purple-600/40 transition-colors"
+                                                    >
+                                                      <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-1.5">
+                                                          <Sparkles className="h-2.5 w-2.5 text-purple-400" />
+                                                          <span className="text-white text-xs">{anuncio.nome}</span>
+                                                          {anuncio.tipo && (
+                                                            <Badge variant="outline" className="text-xs h-4 px-1">
+                                                              {anuncio.tipo}
+                                                            </Badge>
+                                                          )}
+                                                        </div>
+                                                        <div className="flex items-center gap-0.5">
+                                                          <Button 
+                                                            size="sm" 
+                                                            variant="ghost" 
+                                                            className="h-4 w-4 p-0 text-gray-400 hover:text-white"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                          >
+                                                            <Edit className="h-2 w-2" />
+                                                          </Button>
+                                                          <Button 
+                                                            size="sm" 
+                                                            variant="ghost" 
+                                                            className="h-4 w-4 p-0 text-red-400 hover:text-red-300"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                          >
+                                                            <Trash2 className="h-2 w-2" />
+                                                          </Button>
+                                                        </div>
+                                                      </div>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Empty state */}
+                  {funis.length === 0 && !loading && (
+                    <div className="text-center py-12">
+                      <Layers className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                      <p className="text-gray-400 mb-4">Nenhum funil cadastrado</p>
+                      <Button
+                        onClick={() => setModalFunilAberto(true)}
+                        className="bg-cyan-600 hover:bg-cyan-700"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Criar Primeiro Funil
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Tab: Aparência */}
+            <TabsContent value="aparencia" className="space-y-4">
+              <Card className="bg-gray-800/50 border-gray-700">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-white flex items-center gap-2">
+                        <Palette className="h-5 w-5" />
+                        Tema do Painel
+                      </CardTitle>
+                      <CardDescription className="text-gray-400">
+                        Personalize a aparência do sistema
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Tema Sistema (atual) */}
+                    <button
+                      onClick={() => {
+                        setTheme('sistema');
+                        toast.success('Tema alterado para Sistema');
+                      }}
+                      className={`group relative overflow-hidden rounded-xl border-2 transition-all ${
+                        theme === 'sistema' 
+                          ? 'border-blue-500 shadow-lg shadow-blue-500/20' 
+                          : 'border-gray-700 hover:border-gray-600'
+                      }`}
+                    >
+                      <div className="aspect-[4/3] bg-gradient-to-br from-slate-900 via-gray-900 to-black p-6">
+                        <div className="space-y-3">
+                          <div className="h-4 w-20 bg-blue-600 rounded"></div>
+                          <div className="space-y-2">
+                            <div className="h-2 bg-gray-700 rounded w-full"></div>
+                            <div className="h-2 bg-gray-700 rounded w-3/4"></div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 mt-4">
+                            <div className="h-12 bg-gray-800/50 rounded border border-gray-700"></div>
+                            <div className="h-12 bg-gray-800/50 rounded border border-gray-700"></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-4 bg-gray-900/50">
+                        <h3 className="font-semibold text-white flex items-center gap-2">
+                          Sistema
+                          {theme === 'sistema' && (
+                            <Badge className="bg-blue-600 text-xs">Ativo</Badge>
+                          )}
+                        </h3>
+                        <p className="text-sm text-gray-400 mt-1">
+                          Tema dark tecnológico atual
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* Tema Clean (Lídia Cabral) */}
+                    <button
+                      onClick={() => {
+                        setTheme('clean');
+                        toast.success('Tema alterado para Clean');
+                      }}
+                      className={`group relative overflow-hidden rounded-xl border-2 transition-all ${
+                        theme === 'clean' 
+                          ? 'border-pink-500 shadow-lg shadow-pink-500/20' 
+                          : 'border-gray-700 hover:border-gray-600'
+                      }`}
+                    >
+                      <div className="aspect-[4/3] bg-gradient-to-br from-rose-50 via-pink-50 to-orange-50 p-6">
+                        <div className="space-y-3">
+                          <div className="h-4 w-20 bg-blue-600 rounded"></div>
+                          <div className="space-y-2">
+                            <div className="h-2 bg-gray-300 rounded w-full"></div>
+                            <div className="h-2 bg-gray-300 rounded w-3/4"></div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 mt-4">
+                            <div className="h-12 bg-white rounded border border-gray-300 shadow-sm"></div>
+                            <div className="h-12 bg-white rounded border border-gray-300 shadow-sm"></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-4 bg-white border-t border-gray-200">
+                        <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                          Clean
+                          {theme === 'clean' && (
+                            <Badge className="bg-blue-600 text-xs">Ativo</Badge>
+                          )}
+                        </h3>
+                        <p className="text-sm text-gray-600 mt-1">
+                          Moderno e profissional
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* Tema Dark */}
+                    <button
+                      onClick={() => {
+                        setTheme('dark');
+                        toast.success('Tema alterado para Dark');
+                      }}
+                      className={`group relative overflow-hidden rounded-xl border-2 transition-all ${
+                        theme === 'dark' 
+                          ? 'border-purple-500 shadow-lg shadow-purple-500/20' 
+                          : 'border-gray-700 hover:border-gray-600'
+                      }`}
+                    >
+                      <div className="aspect-[4/3] bg-gradient-to-br from-gray-950 via-black to-gray-900 p-6">
+                        <div className="space-y-3">
+                          <div className="h-4 w-20 bg-purple-600 rounded"></div>
+                          <div className="space-y-2">
+                            <div className="h-2 bg-gray-800 rounded w-full"></div>
+                            <div className="h-2 bg-gray-800 rounded w-3/4"></div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 mt-4">
+                            <div className="h-12 bg-gray-900 rounded border border-gray-800"></div>
+                            <div className="h-12 bg-gray-900 rounded border border-gray-800"></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-4 bg-gray-950">
+                        <h3 className="font-semibold text-white flex items-center gap-2">
+                          Dark
+                          {theme === 'dark' && (
+                            <Badge className="bg-purple-600 text-xs">Ativo</Badge>
+                          )}
+                        </h3>
+                        <p className="text-sm text-gray-400 mt-1">
+                          Minimalista e profissional
+                        </p>
+                      </div>
+                    </button>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Tab: Campanhas */}
+            <TabsContent value="campanhas" className="space-y-4">
+              <Card className="bg-gray-800/50 border-gray-700">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-white flex items-center gap-2">
+                        <Target className="h-5 w-5" />
+                        Gerenciar Campanhas
+                      </CardTitle>
+                      <CardDescription className="text-gray-400">
+                        Crie e gerencie campanhas de marketing
+                      </CardDescription>
+                    </div>
+                    <Button
+                      onClick={() => setModalCampanhaAberto(true)}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Nova Campanha
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-3">
+                    {/* Mock data */}
+                    {[
+                      { id: '1', nome: 'Campanha Black Friday', funil_nome: 'Funil Contínuo', ativa: true },
+                      { id: '2', nome: 'Lançamento Produto X', funil_nome: 'Cursos', ativa: true },
+                      { id: '3', nome: 'Lead Magnet eBook', funil_nome: 'Iscas Gratuitas', ativa: false },
+                    ].map((campanha) => (
+                      <div
+                        key={campanha.id}
+                        className="bg-gray-900/50 border border-gray-700 rounded-lg p-4 hover:border-blue-600/50 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="text-white font-medium flex items-center gap-2">
+                              <Target className="h-4 w-4 text-blue-400" />
+                              {campanha.nome}
+                            </h4>
+                            <p className="text-sm text-gray-400 mt-1">
+                              Funil: {campanha.funil_nome}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={campanha.ativa ? 'default' : 'secondary'}>
+                              {campanha.ativa ? 'Ativa' : 'Inativa'}
+                            </Badge>
+                            <Button size="sm" variant="ghost" className="text-gray-400 hover:text-white">
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Tab: Configurações */}
+            <TabsContent value="configuracoes" className="space-y-4">
+              <Card className="bg-gray-800/50 border-gray-700">
+                <CardHeader>
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <Settings className="h-5 w-5" />
+                    Configurações do Sistema
+                  </CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Configure parâmetros gerais do sistema
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-400 text-sm">Em desenvolvimento...</p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
+
+      {/* Modal Criar Usuário */}
+      {modalUsuarioAberto && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-white mb-4">Criar Novo Usuário</h3>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-gray-300">Nome Completo</Label>
+                <Input
+                  value={novoUsuario.nome}
+                  onChange={(e) => setNovoUsuario({ ...novoUsuario, nome: e.target.value })}
+                  className="bg-gray-800 border-gray-600 text-white"
+                  placeholder="Ex: João Silva"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-300">Email</Label>
+                <Input
+                  type="email"
+                  value={novoUsuario.email}
+                  onChange={(e) => setNovoUsuario({ ...novoUsuario, email: e.target.value })}
+                  className="bg-gray-800 border-gray-600 text-white"
+                  placeholder="joao@exemplo.com"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-300">Senha</Label>
+                <Input
+                  type="password"
+                  value={novoUsuario.senha}
+                  onChange={(e) => setNovoUsuario({ ...novoUsuario, senha: e.target.value })}
+                  className="bg-gray-800 border-gray-600 text-white"
+                  placeholder="••••••••"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-300">Função</Label>
+                <select
+                  value={novoUsuario.role}
+                  onChange={(e) => setNovoUsuario({ ...novoUsuario, role: e.target.value as UserRole })}
+                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded"
+                >
+                  <option value="admin">Administrador - Acesso Total</option>
+                  <option value="trafego">Tráfego - Apenas Dashboard Tráfego</option>
+                  <option value="sdr">SDR - Apenas Dashboard SDR</option>
+                  <option value="closer">Closer - Apenas Dashboard Closer</option>
+                  <option value="social-seller">Social Seller - Apenas Dashboard Social Seller</option>
+                  <option value="cs">Customer Success - Apenas Dashboard CS</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-6">
+              <Button
+                onClick={() => setModalUsuarioAberto(false)}
+                variant="outline"
+                className="flex-1 border-gray-600"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCriarUsuario}
+                disabled={loading}
+                className="flex-1 bg-purple-600 hover:bg-purple-700"
+              >
+                {loading ? 'Criando...' : 'Criar Usuário'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Criar Funil */}
+      {modalFunilAberto && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-white mb-4">Criar Novo Funil</h3>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-gray-300">Nome do Funil</Label>
+                <Input
+                  value={novoFunil.nome}
+                  onChange={(e) => setNovoFunil({ ...novoFunil, nome: e.target.value })}
+                  className="bg-gray-800 border-gray-600 text-white"
+                  placeholder="Ex: Funil de Vendas"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-300">Descrição (opcional)</Label>
+                <textarea
+                  value={novoFunil.descricao}
+                  onChange={(e) => setNovoFunil({ ...novoFunil, descricao: e.target.value })}
+                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded h-24"
+                  placeholder="Descreva o objetivo deste funil..."
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-6">
+              <Button
+                onClick={() => setModalFunilAberto(false)}
+                variant="outline"
+                className="flex-1 border-gray-600"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCriarFunil}
+                disabled={loading}
+                className="flex-1 bg-cyan-600 hover:bg-cyan-700"
+              >
+                {loading ? 'Criando...' : 'Criar Funil'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Criar Campanha */}
+      {modalCampanhaAberto && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-white mb-4">Criar Nova Campanha</h3>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-gray-300">Nome da Campanha</Label>
+                <Input
+                  value={novaCampanha.nome}
+                  onChange={(e) => setNovaCampanha({ ...novaCampanha, nome: e.target.value })}
+                  className="bg-gray-800 border-gray-600 text-white"
+                  placeholder="Ex: Black Friday 2024"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-300">Funil</Label>
+                <select
+                  value={novaCampanha.funil_id}
+                  onChange={(e) => setNovaCampanha({ ...novaCampanha, funil_id: e.target.value })}
+                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded"
+                >
+                  <option value="">Selecione um funil</option>
+                  {funis.map(funil => (
+                    <option key={funil.id} value={funil.id}>{funil.nome}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-6">
+              <Button
+                onClick={() => setModalCampanhaAberto(false)}
+                variant="outline"
+                className="flex-1 border-gray-600"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCriarCampanha}
+                disabled={loading}
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+              >
+                {loading ? 'Criando...' : 'Criar Campanha'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Criar Conjunto de Anúncio */}
+      {modalConjuntoAberto && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-white mb-4">Criar Novo Conjunto de Anúncio</h3>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-gray-300">Campanha</Label>
+                <select
+                  value={campanhaSelecionadaParaConjunto}
+                  onChange={(e) => setCampanhaSelecionadaParaConjunto(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded"
+                >
+                  <option value="">Selecione uma campanha</option>
+                  {campanhas.map(campanha => (
+                    <option key={campanha.id} value={campanha.id}>{campanha.nome}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label className="text-gray-300">Nome do Conjunto</Label>
+                <Input
+                  value={novoConjunto.nome}
+                  onChange={(e) => setNovoConjunto({ ...novoConjunto, nome: e.target.value })}
+                  className="bg-gray-800 border-gray-600 text-white"
+                  placeholder="Ex: Conjunto Black Friday"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-6">
+              <Button
+                onClick={() => setModalConjuntoAberto(false)}
+                variant="outline"
+                className="flex-1 border-gray-600"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCriarConjunto}
+                disabled={loading}
+                className="flex-1 bg-green-600 hover:bg-green-700"
+              >
+                {loading ? 'Criando...' : 'Criar Conjunto'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Criar Anúncio */}
+      {modalAnuncioAberto && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-white mb-4">Criar Novo Anúncio</h3>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-gray-300">Campanha</Label>
+                <select
+                  value={campanhaSelecionadaParaAnuncio}
+                  onChange={(e) => {
+                    setCampanhaSelecionadaParaAnuncio(e.target.value);
+                    setConjuntoSelecionadoParaAnuncio(''); // Limpar conjunto ao mudar campanha
+                  }}
+                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded"
+                >
+                  <option value="">Selecione uma campanha</option>
+                  {campanhas.map(campanha => (
+                    <option key={campanha.id} value={campanha.id}>{campanha.nome}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label className="text-gray-300">Conjunto de Anúncio</Label>
+                <select
+                  value={conjuntoSelecionadoParaAnuncio}
+                  onChange={(e) => setConjuntoSelecionadoParaAnuncio(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded"
+                  disabled={!campanhaSelecionadaParaAnuncio}
+                >
+                  <option value="">Selecione um conjunto</option>
+                  {campanhas
+                    .filter(c => c.id === campanhaSelecionadaParaAnuncio)
+                    .flatMap(c => c.conjuntos_anuncio || [])
+                    .map(conjunto => (
+                      <option key={conjunto.id} value={conjunto.id}>{conjunto.nome}</option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <Label className="text-gray-300">Nome do Anúncio</Label>
+                <Input
+                  value={novoAnuncio.nome}
+                  onChange={(e) => setNovoAnuncio({ ...novoAnuncio, nome: e.target.value })}
+                  className="bg-gray-800 border-gray-600 text-white"
+                  placeholder="Ex: Banner Black Friday"
+                />
+              </div>
+              <div>
+                <Label className="text-gray-300">Tipo (opcional)</Label>
+                <select
+                  value={novoAnuncio.tipo}
+                  onChange={(e) => setNovoAnuncio({ ...novoAnuncio, tipo: e.target.value })}
+                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded"
+                >
+                  <option value="image">Imagem</option>
+                  <option value="video">Vídeo</option>
+                  <option value="carousel">Carrossel</option>
+                </select>
+              </div>
+              <div>
+                <Label className="text-gray-300">Criativo (Imagem/Vídeo)</Label>
+                <div 
+                  className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center hover:border-gray-500 transition-colors"
+                  onPaste={(e) => {
+                    const items = e.clipboardData.items;
+                    for (let i = 0; i < items.length; i++) {
+                      if (items[i].type.indexOf('image') !== -1) {
+                        const blob = items[i].getAsFile();
+                        if (blob) {
+                          setNovoAnuncio({ ...novoAnuncio, arquivo: blob });
+                          toast.success('Imagem colada com sucesso!');
+                        }
+                      }
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files[0];
+                    if (file && file.type.startsWith('image/')) {
+                      setNovoAnuncio({ ...novoAnuncio, arquivo: file });
+                    }
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                >
+                  <input
+                    type="file"
+                    id="arquivo-anuncio"
+                    accept="image/*,video/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setNovoAnuncio({ ...novoAnuncio, arquivo: file });
+                      }
+                    }}
+                  />
+                  {novoAnuncio.arquivo ? (
+                    <div className="space-y-2">
+                      {novoAnuncio.arquivo.type.startsWith('image/') && (
+                        <img 
+                          src={URL.createObjectURL(novoAnuncio.arquivo)} 
+                          alt="Preview" 
+                          className="max-h-32 mx-auto rounded"
+                        />
+                      )}
+                      <p className="text-sm text-gray-400">{novoAnuncio.arquivo.name}</p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setNovoAnuncio({ ...novoAnuncio, arquivo: null })}
+                        className="text-xs"
+                      >
+                        Remover
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-gray-400 text-sm">Arraste uma imagem ou</p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => document.getElementById('arquivo-anuncio')?.click()}
+                      >
+                        Escolher Arquivo
+                      </Button>
+                      <p className="text-xs text-gray-500 mt-2">Ou pressione Ctrl+V para colar</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-6">
+              <Button
+                onClick={() => setModalAnuncioAberto(false)}
+                variant="outline"
+                className="flex-1 border-gray-600"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCriarAnuncio}
+                disabled={loading}
+                className="flex-1 bg-purple-600 hover:bg-purple-700"
+              >
+                {loading ? 'Criando...' : 'Criar Anúncio'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </LayoutComFunis>
+  );
+}

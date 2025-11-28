@@ -1,0 +1,289 @@
+﻿'use client';
+
+import { useState } from 'react';
+import { useCampanhaContext } from '@/contexts/CampanhaContext';
+import { FuturisticMetricCard } from '@/components/dashboard/FuturisticMetricCard';
+import { FuturisticCampanhasTable } from '@/components/dashboard/FuturisticCampanhasTable';
+import { FuturisticCharts } from '@/components/dashboard/FuturisticCharts';
+import FiltrosDashboard from '@/components/dashboard/FiltrosDashboard';
+import { FunilConversao } from '@/components/dashboard/FunilConversao';
+import ModalEditarMetricas from '@/components/modals/ModalEditarMetricas';
+import { Button } from '@/components/ui/button';
+import { TrendingUp, Users, MousePointer, Target, Zap, Rocket, Brain, Star, Edit3, Plus } from 'lucide-react';
+
+export function DashboardCampanha() {
+  const { campanhaAtiva, metricasCampanha, loading, filtroData, atualizarFiltroData, recarregarMetricas } = useCampanhaContext();
+  const [modalEditarAberto, setModalEditarAberto] = useState(false);
+
+  // Dados padrÃ£o quando nenhuma campanha estÃ¡ selecionada
+  const metricsDataPadrao = [
+    {
+      title: 'Revenue Engine',
+      value: 'R$ 8.234,00',
+      trend: 'up' as const,
+      icon: <Rocket className="h-5 w-5" />,
+      percentage: 85.2,
+      gradient: 'from-emerald-500/20 to-teal-500/20',
+      description: '+24% vs mÃªs anterior'
+    },
+    {
+      title: 'Lead Generation',
+      value: '1.283',
+      trend: 'up' as const,
+      icon: <Zap className="h-5 w-5" />,
+      percentage: 92.7,
+      gradient: 'from-blue-500/20 to-cyan-500/20',
+      description: '+18% esta semana'
+    },
+    {
+      title: 'Engagement Rate',
+      value: '2,4%',
+      trend: 'stable' as const,
+      icon: <Brain className="h-5 w-5" />,
+      percentage: 76.3,
+      gradient: 'from-purple-500/20 to-pink-500/20',
+      description: 'Mantendo estabilidade'
+    },
+    {
+      title: 'Conversion Power',
+      value: '12,5%',
+      trend: 'up' as const,
+      icon: <Star className="h-5 w-5" />,
+      percentage: 89.4,
+      gradient: 'from-amber-500/20 to-orange-500/20',
+      description: 'Performance excepcional'
+    },
+  ];
+
+  const campanhasDataPadrao = [
+    {
+      id: '1',
+      nome: 'Masterclass Vendas',
+      plataforma: 'Meta Ads',
+      investido: 2300,
+      leads: 380,
+      ctr: 2.6,
+      conversao: 12,
+      ativa: true
+    },
+    {
+      id: '2',
+      nome: 'Funil de AplicaÃ§Ã£o',
+      plataforma: 'Google Ads',
+      investido: 3100,
+      leads: 498,
+      ctr: 3.1,
+      conversao: 15,
+      ativa: true
+    },
+    {
+      id: '3',
+      nome: 'CaptaÃ§Ã£o Leads',
+      plataforma: 'Meta Ads',
+      investido: 1850,
+      leads: 225,
+      ctr: 1.8,
+      conversao: 8.5,
+      ativa: false
+    }
+  ];
+
+  const chartDataPadrao = [
+    { data: '2024-10-20', investido: 500, leads: 45, conversoes: 8 },
+    { data: '2024-10-21', investido: 750, leads: 62, conversoes: 12 },
+    { data: '2024-10-22', investido: 620, leads: 58, conversoes: 10 },
+    { data: '2024-10-23', investido: 890, leads: 78, conversoes: 15 },
+    { data: '2024-10-24', investido: 1200, leads: 95, conversoes: 18 },
+  ];
+
+    // MÃ©tricas financeiras (apenas 3 cards)
+    const metricsData = metricasCampanha ? [
+      {
+        title: 'Investimento',
+        value: metricasCampanha.investimento > 0 ? `R$ ${metricasCampanha.investimento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'NÃ£o informado',
+        trend: 'up' as const,
+        icon: <Target className="h-5 w-5" />,
+        percentage: 85,
+        gradient: 'from-blue-500/20 to-cyan-500/20',
+        description: 'Total investido'
+      },
+      {
+        title: 'Faturamento',
+        value: metricasCampanha.faturamento > 0 ? `R$ ${metricasCampanha.faturamento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'NÃ£o informado',
+        trend: metricasCampanha.faturamento >= metricasCampanha.investimento ? 'up' as const : 'down' as const,
+        icon: <Rocket className="h-5 w-5" />,
+        percentage: Math.min((metricasCampanha.faturamento / Math.max(metricasCampanha.investimento, 1)) * 50, 100),
+        gradient: 'from-emerald-500/20 to-teal-500/20',
+        description: 'Receita total'
+      },
+      {
+        title: 'ROAS',
+        value: metricasCampanha.roas > 0 ? `${metricasCampanha.roas.toFixed(2)}x` : 'NÃ£o informado',
+        trend: metricasCampanha.roas >= 2 ? 'up' as const : metricasCampanha.roas > 0 ? 'stable' as const : 'down' as const,
+        icon: <TrendingUp className="h-5 w-5" />,
+        percentage: Math.min(metricasCampanha.roas * 30, 100),
+        gradient: 'from-purple-500/20 to-pink-500/20',
+        description: metricasCampanha.roas >= 2 ? 'Excelente retorno' : metricasCampanha.roas > 0 ? 'Retorno moderado' : 'Sem dados'
+      }
+    ] : [
+      {
+        title: 'Investimento',
+        value: 'NÃ£o informado',
+        trend: 'stable' as const,
+        icon: <Target className="h-5 w-5" />,
+        percentage: 0,
+        gradient: 'from-blue-500/20 to-cyan-500/20',
+        description: 'Selecione uma campanha'
+      },
+      {
+        title: 'Faturamento',
+        value: 'NÃ£o informado',
+        trend: 'stable' as const,
+        icon: <Rocket className="h-5 w-5" />,
+        percentage: 0,
+        gradient: 'from-emerald-500/20 to-teal-500/20',
+        description: 'Selecione uma campanha'
+      },
+      {
+        title: 'ROAS',
+        value: 'NÃ£o informado',
+        trend: 'stable' as const,
+        icon: <TrendingUp className="h-5 w-5" />,
+        percentage: 0,
+        gradient: 'from-purple-500/20 to-pink-500/20',
+        description: 'Selecione uma campanha'
+      }
+    ];  // Dados da campanha para a tabela
+  const campanhasData = campanhaAtiva && metricasCampanha ? [
+    {
+      id: campanhaAtiva.id,
+      nome: campanhaAtiva.nome,
+      plataforma: campanhaAtiva.plataforma,
+      investido: metricasCampanha.investimento,
+      leads: metricasCampanha.leads,
+      ctr: metricasCampanha.ctr,
+      conversao: metricasCampanha.taxa_conversao,
+      ativa: campanhaAtiva.ativo
+    }
+  ] : campanhasDataPadrao;
+
+  // Gerar dados de grÃ¡fico baseados na campanha
+  const chartData = metricasCampanha ? [
+    { 
+      data: '2024-10-20', 
+      investido: Math.floor(metricasCampanha.investimento * 0.15), 
+      leads: Math.floor(metricasCampanha.leads * 0.12), 
+      conversoes: Math.floor(metricasCampanha.vendas * 0.18) 
+    },
+    { 
+      data: '2024-10-21', 
+      investido: Math.floor(metricasCampanha.investimento * 0.22), 
+      leads: Math.floor(metricasCampanha.leads * 0.25), 
+      conversoes: Math.floor(metricasCampanha.vendas * 0.28) 
+    },
+    { 
+      data: '2024-10-22', 
+      investido: Math.floor(metricasCampanha.investimento * 0.18), 
+      leads: Math.floor(metricasCampanha.leads * 0.20), 
+      conversoes: Math.floor(metricasCampanha.vendas * 0.22) 
+    },
+    { 
+      data: '2024-10-23', 
+      investido: Math.floor(metricasCampanha.investimento * 0.25), 
+      leads: Math.floor(metricasCampanha.leads * 0.28), 
+      conversoes: Math.floor(metricasCampanha.vendas * 0.25) 
+    },
+    { 
+      data: '2024-10-24', 
+      investido: Math.floor(metricasCampanha.investimento * 0.20), 
+      leads: Math.floor(metricasCampanha.leads * 0.15), 
+      conversoes: Math.floor(metricasCampanha.vendas * 0.07) 
+    },
+  ] : chartDataPadrao;
+
+  return (
+    <div className="space-y-8 p-2">
+      {/* Futuristic Header */}
+      <div className="relative">
+        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-pink-500/10 blur-3xl" />
+        <div className="relative bg-slate-900/50 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-8">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-4">
+              <div className="flex space-x-1">
+                <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse"></div>
+                <div className="w-3 h-3 bg-purple-400 rounded-full animate-pulse animation-delay-200"></div>
+                <div className="w-3 h-3 bg-pink-400 rounded-full animate-pulse animation-delay-400"></div>
+              </div>
+              <h1 className="text-4xl font-bold text-white bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                {campanhaAtiva ? `Campanha: ${campanhaAtiva.nome}` : 'Neural Dashboard'}
+              </h1>
+            </div>
+            
+            {/* BotÃ£o Editar MÃ©tricas */}
+            {campanhaAtiva && (
+              <Button
+                onClick={() => setModalEditarAberto(true)}
+                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Adicionar Dados
+              </Button>
+            )}
+          </div>
+          
+          <p className="text-slate-300 text-lg">
+            {campanhaAtiva 
+              ? `AnÃ¡lise detalhada da campanha â€¢ ${campanhaAtiva.plataforma} â€¢ ${campanhaAtiva.tipo.charAt(0).toUpperCase() + campanhaAtiva.tipo.slice(1)}`
+              : 'Sistema de InteligÃªncia em TrÃ¡fego Pago â€¢ AnÃ¡lise em Tempo Real'
+            }
+          </p>
+          {loading && (
+            <div className="mt-4 flex items-center text-cyan-400">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-cyan-400 mr-2"></div>
+              Carregando dados da campanha...
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Filtros de Data */}
+      <FiltrosDashboard
+        filtroAtual={filtroData}
+        onFiltroChange={atualizarFiltroData}
+      />
+
+        {/* MÃ©tricas Financeiras */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {metricsData.map((metric, index) => (
+            <FuturisticMetricCard
+              key={index}
+              title={metric.title}
+              value={metric.value}
+              trend={metric.trend}
+              icon={metric.icon}
+              percentage={metric.percentage}
+              gradient={metric.gradient}
+              description={metric.description}
+            />
+          ))}
+        </div>
+
+        {/* Funil de ConversÃ£o */}
+        <FunilConversao />      {/* GrÃ¡ficos FuturÃ­sticos */}
+      <FuturisticCharts data={chartData} />
+
+      {/* Tabela FuturÃ­stica */}
+      <FuturisticCampanhasTable campanhas={campanhasData} />
+
+      {/* Modal para editar mÃ©tricas */}
+      <ModalEditarMetricas
+        open={modalEditarAberto}
+        onOpenChange={setModalEditarAberto}
+        campanha={campanhaAtiva}
+        onDadosAtualizados={() => {
+          recarregarMetricas();
+        }}
+      />
+    </div>
+  );
+}

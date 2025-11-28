@@ -1,0 +1,198 @@
+'use client';
+
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import type { Campanha, MetricasAgregadas } from '@/types/hierarchical';
+
+export interface FiltroData {
+  tipo: 'hoje' | 'ontem' | 'semana' | 'mes' | 'trimestre' | 'ano' | 'personalizado';
+  dataInicio: string;
+  dataFim: string;
+}
+
+interface CampanhaContextType {
+  campanhaAtiva: Campanha | null;
+  metricasCampanha: MetricasAgregadas | null;
+  loading: boolean;
+  filtroData: FiltroData;
+  selecionarCampanha: (campanha: Campanha | null) => void;
+  limparSelecao: () => void;
+  atualizarFiltroData: (filtro: FiltroData) => void;
+  recarregarMetricas: () => void;
+}
+
+const CampanhaContext = createContext<CampanhaContextType | undefined>(undefined);
+
+export function useCampanhaContext() {
+  const context = useContext(CampanhaContext);
+  if (!context) {
+    throw new Error('useCampanhaContext deve ser usado dentro do CampanhaProvider');
+  }
+  return context;
+}
+
+interface CampanhaProviderProps {
+  children: React.ReactNode;
+}
+
+export function CampanhaProvider({ children }: CampanhaProviderProps) {
+  const [campanhaAtiva, setCampanhaAtiva] = useState<Campanha | null>(null);
+  const [metricasCampanha, setMetricasCampanha] = useState<MetricasAgregadas | null>(null);
+  const [loading, setLoading] = useState(false);
+  
+  // Filtro padrão: hoje
+  const [filtroData, setFiltroData] = useState<FiltroData>(() => {
+    const hoje = new Date().toISOString().split('T')[0];
+    return {
+      tipo: 'mes',
+      dataInicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+      dataFim: hoje
+    };
+  });
+
+  const buscarMetricasCampanha = async (campanhaId: string, filtro?: FiltroData) => {
+    setLoading(true);
+    const filtroAtual = filtro || filtroData;
+    
+    try {
+      // Buscar múltiplas métricas da campanha no período filtrado
+      const { data: metricasArray, error } = await supabase
+        .from('metricas')
+        .select('*')
+        .eq('tipo', 'campanha')
+        .eq('referencia_id', campanhaId)
+        .gte('periodo_inicio', filtroAtual.dataInicio)
+        .lte('periodo_fim', filtroAtual.dataFim)
+        .order('periodo_inicio', { ascending: false });
+
+      if (error) {
+        console.error('Erro ao buscar métricas:', error);
+      }
+
+      if (!metricasArray || metricasArray.length === 0) {
+        // Se não houver métricas, retornar valores zerados
+        const metricas: MetricasAgregadas = {
+          alcance: 0,
+          impressoes: 0,
+          cliques: 0,
+          visualizacoes_pagina: 0,
+          leads: 0,
+          checkouts: 0,
+          vendas: 0,
+          investimento: 0,
+          faturamento: 0,
+          roas: 0,
+          ctr: 0,
+          cpm: 0,
+          cpc: 0,
+          cpl: 0,
+          taxa_conversao: 0
+        };
+
+        // Calcular métricas derivadas
+        metricas.roas = metricas.investimento > 0 ? parseFloat((metricas.faturamento / metricas.investimento).toFixed(2)) : 0;
+        metricas.ctr = metricas.impressoes > 0 ? parseFloat(((metricas.cliques / metricas.impressoes) * 100).toFixed(2)) : 0;
+        metricas.cpm = metricas.impressoes > 0 ? parseFloat(((metricas.investimento / metricas.impressoes) * 1000).toFixed(2)) : 0;
+        metricas.cpc = metricas.cliques > 0 ? parseFloat((metricas.investimento / metricas.cliques).toFixed(2)) : 0;
+        metricas.cpl = metricas.leads > 0 ? parseFloat((metricas.investimento / metricas.leads).toFixed(2)) : 0;
+        metricas.taxa_conversao = metricas.leads > 0 ? parseFloat(((metricas.vendas / metricas.leads) * 100).toFixed(2)) : 0;
+
+        setMetricasCampanha(metricas);
+      } else {
+        // Agregar métricas do período
+        const metricasAgregadas: MetricasAgregadas = metricasArray.reduce((acc, metrica) => ({
+          alcance: acc.alcance + (metrica.alcance || 0),
+          impressoes: acc.impressoes + (metrica.impressoes || 0),
+          cliques: acc.cliques + (metrica.cliques || 0),
+          visualizacoes_pagina: acc.visualizacoes_pagina + (metrica.visualizacoes_pagina || 0),
+          leads: acc.leads + (metrica.leads || 0),
+          checkouts: acc.checkouts + (metrica.checkouts || 0),
+          vendas: acc.vendas + (metrica.vendas || 0),
+          investimento: acc.investimento + (metrica.investimento || 0),
+          faturamento: acc.faturamento + (metrica.faturamento || 0),
+          roas: 0,
+          ctr: 0,
+          cpm: 0,
+          cpc: 0,
+          cpl: 0,
+          taxa_conversao: 0
+        }), {
+          alcance: 0,
+          impressoes: 0,
+          cliques: 0,
+          visualizacoes_pagina: 0,
+          leads: 0,
+          checkouts: 0,
+          vendas: 0,
+          investimento: 0,
+          faturamento: 0,
+          roas: 0,
+          ctr: 0,
+          cpm: 0,
+          cpc: 0,
+          cpl: 0,
+          taxa_conversao: 0
+        });
+
+        // Recalcular métricas derivadas agregadas
+        metricasAgregadas.roas = metricasAgregadas.investimento > 0 ? metricasAgregadas.faturamento / metricasAgregadas.investimento : 0;
+        metricasAgregadas.ctr = metricasAgregadas.impressoes > 0 ? (metricasAgregadas.cliques / metricasAgregadas.impressoes) * 100 : 0;
+        metricasAgregadas.cpm = metricasAgregadas.impressoes > 0 ? (metricasAgregadas.investimento / metricasAgregadas.impressoes) * 1000 : 0;
+        metricasAgregadas.cpc = metricasAgregadas.cliques > 0 ? metricasAgregadas.investimento / metricasAgregadas.cliques : 0;
+        metricasAgregadas.cpl = metricasAgregadas.leads > 0 ? metricasAgregadas.investimento / metricasAgregadas.leads : 0;
+        metricasAgregadas.taxa_conversao = metricasAgregadas.leads > 0 ? (metricasAgregadas.vendas / metricasAgregadas.leads) * 100 : 0;
+
+        setMetricasCampanha(metricasAgregadas);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar métricas da campanha:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selecionarCampanha = (campanha: Campanha | null) => {
+    setCampanhaAtiva(campanha);
+    if (campanha) {
+      buscarMetricasCampanha(campanha.id);
+    } else {
+      setMetricasCampanha(null);
+    }
+  };
+
+  const limparSelecao = () => {
+    setCampanhaAtiva(null);
+    setMetricasCampanha(null);
+  };
+
+  const atualizarFiltroData = (novoFiltro: FiltroData) => {
+    setFiltroData(novoFiltro);
+    // Se há campanha ativa, recarregar com novo filtro
+    if (campanhaAtiva) {
+      buscarMetricasCampanha(campanhaAtiva.id, novoFiltro);
+    }
+  };
+
+  const recarregarMetricas = () => {
+    if (campanhaAtiva) {
+      buscarMetricasCampanha(campanhaAtiva.id);
+    }
+  };
+
+  return (
+    <CampanhaContext.Provider
+      value={{
+        campanhaAtiva,
+        metricasCampanha,
+        loading,
+        filtroData,
+        selecionarCampanha,
+        limparSelecao,
+        atualizarFiltroData,
+        recarregarMetricas,
+      }}
+    >
+      {children}
+    </CampanhaContext.Provider>
+  );
+}

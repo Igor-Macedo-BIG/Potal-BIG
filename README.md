@@ -1,36 +1,117 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Painel de Tráfego Pago Multiempresa
 
-## Getting Started
+Este projeto é um painel de resultados de tráfego pago multiempresa e multicampanha, com login individual para cada cliente, permitindo que cada empresa visualize suas próprias métricas e criativos de forma isolada.
 
-First, run the development server:
+## 🚀 Tecnologias Utilizadas
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Frontend**: Next.js 14 + TypeScript + Tailwind CSS
+- **UI Components**: shadcn/ui
+- **Gráficos**: Recharts
+- **Banco de dados**: Supabase (PostgreSQL)
+- **Autenticação**: Supabase Auth
+- **Backend**: API Routes do Next.js
+
+## 📊 Funcionalidades
+
+### ✅ Implementadas
+- [x] **Sistema de Login**: Autenticação por empresa
+- [x] **Dashboard Principal**: Métricas de investimento, leads, CTR e conversão
+- [x] **Visualização de Campanhas**: Tabela com campanhas ativas e pausadas
+- [x] **Gráficos Interativos**: Evolução de métricas ao longo do tempo
+- [x] **Layout Responsivo**: Interface otimizada para desktop e mobile
+- [x] **Navegação Lateral**: Menu com diferentes seções do painel
+
+### 🔄 Em Desenvolvimento
+- [ ] **Gestão de Criativos**: Upload e acompanhamento de performance
+- [ ] **Relatórios PDF**: Exportação de dados
+- [ ] **Integração com APIs**: Meta Ads, Google Ads
+- [ ] **Notificações**: Alertas de performance
+- [ ] **Configurações**: Personalização por empresa
+
+## 🏗️ Arquitetura de Dados
+
+```sql
+-- Estrutura do banco de dados
+Empresas (id, nome, logo_url, created_at, updated_at)
+Usuarios (id, nome, email, empresa_id, created_at, updated_at)
+Campanhas (id, nome, plataforma, empresa_id, ativa, created_at, updated_at)
+Metricas (id, campanha_id, data, investido, cliques, leads, ctr, conversao, faturamento)
+Criativos (id, campanha_id, titulo, imagem_url, desempenho, ativo)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## ⚙️ Configuração do Projeto
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 1. Clonar o repositório
+```bash
+git clone [url-do-repositorio]
+cd painel-trafego-pago
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 2. Instalar dependências
+```bash
+npm install
+```
 
-## Learn More
+### 3. Configurar variáveis de ambiente
+Crie um arquivo `.env.local` baseado no `.env.local.example`:
+```bash
+NEXT_PUBLIC_SUPABASE_URL=sua_url_do_supabase
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anonima_do_supabase
+```
 
-To learn more about Next.js, take a look at the following resources:
+### 4. Executar em desenvolvimento
+```bash
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Acesse [http://localhost:3000](http://localhost:3000) para visualizar a aplicação.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 📱 Estrutura de Componentes
 
-## Deploy on Vercel
+```
+src/
+├── app/                    # App Router do Next.js
+├── components/
+│   ├── auth/              # Componentes de autenticação
+│   ├── dashboard/         # Componentes do dashboard
+│   ├── layout/            # Layout e navegação
+│   └── ui/                # Componentes shadcn/ui
+├── lib/                   # Configurações e utilitários
+└── hooks/                 # React hooks customizados
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 🎯 Casos de Uso
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Para Agências de Marketing
+- **Multi-cliente**: Cada empresa tem sua própria conta isolada
+- **Transparência**: Clientes visualizam métricas em tempo real
+- **Relatórios**: Exportação de dados para apresentações
+
+### Para Empresas
+- **Acompanhamento**: Métricas de ROI e performance
+- **Campanhas**: Visualização de todas as campanhas ativas
+- **Criativos**: Performance de cada material publicitário
+
+## 🔧 Próximos Passos
+
+1. **Configurar Supabase**: Criar tabelas e configurar autenticação
+2. **Integração com APIs**: Conectar com Meta Ads e Google Ads
+3. **Sistema de Uploads**: Implementar upload de criativos
+4. **Relatórios**: Adicionar geração de PDF
+5. **Notificações**: Sistema de alertas
+
+## 🤝 Contribuição
+
+1. Fork o projeto
+2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
+3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
+4. Push para a branch (`git push origin feature/AmazingFeature`)
+5. Abra um Pull Request
+
+## 📄 Licença
+
+Este projeto está sob a licença MIT. Veja o arquivo `LICENSE` para mais detalhes.
+
+## 📞 Suporte
+
+Para dúvidas ou suporte, entre em contato através do email: [seu-email@exemplo.com]
