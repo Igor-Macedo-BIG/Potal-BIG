@@ -34,7 +34,7 @@ import {
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 
-type UserRole = 'admin' | 'sdr' | 'closer' | 'social-seller' | 'cs' | 'trafego';
+type UserRole = 'admin' | 'gestor' | 'sdr' | 'closer' | 'social-seller' | 'cs' | 'trafego';
 
 interface Usuario {
   id: string;
@@ -82,6 +82,7 @@ interface Anuncio {
 
 const roleLabels: Record<UserRole, string> = {
   admin: 'Administrador',
+  gestor: 'Gestor de Marketing',
   sdr: 'SDR',
   closer: 'Closer',
   'social-seller': 'Social Seller',
@@ -91,6 +92,7 @@ const roleLabels: Record<UserRole, string> = {
 
 const roleIcons: Record<UserRole, any> = {
   admin: Shield,
+  gestor: Target,
   sdr: Phone,
   closer: Handshake,
   'social-seller': Share2,
@@ -100,6 +102,7 @@ const roleIcons: Record<UserRole, any> = {
 
 const roleColors: Record<UserRole, string> = {
   admin: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+  gestor: 'bg-blue-600/20 text-blue-300 border-blue-600/30',
   sdr: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
   closer: 'bg-green-500/20 text-green-300 border-green-500/30',
   'social-seller': 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
@@ -273,16 +276,74 @@ export default function PainelAdmin() {
       return;
     }
 
+    // Validar email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(novoUsuario.email)) {
+      toast.error('Email inválido');
+      return;
+    }
+
+    // Validar senha (mínimo 6 caracteres)
+    if (novoUsuario.senha.length < 6) {
+      toast.error('A senha deve ter no mínimo 6 caracteres');
+      return;
+    }
+
     setLoading(true);
     try {
-      // Aqui você implementaria a criação real via Supabase Auth
-      // Por enquanto, apenas simulando
-      toast.success('Usuário criado com sucesso!');
+      // 1. Criar usuário no Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: novoUsuario.email,
+        password: novoUsuario.senha,
+        options: {
+          data: {
+            nome: novoUsuario.nome,
+            role: novoUsuario.role
+          }
+        }
+      });
+
+      if (authError) throw authError;
+
+      if (!authData.user) {
+        throw new Error('Erro ao criar usuário no sistema de autenticação');
+      }
+
+      // 2. Criar registro na tabela users
+      const { error: userError } = await supabase
+        .from('users')
+        .insert({
+          id: authData.user.id,
+          nome: novoUsuario.nome,
+          email: novoUsuario.email,
+          role: novoUsuario.role,
+          ativo: true
+        });
+
+      if (userError) {
+        console.error('Erro ao criar registro do usuário:', userError);
+        // Tentar deletar o usuário do Auth se falhar
+        await supabase.auth.admin.deleteUser(authData.user.id);
+        throw userError;
+      }
+
+      toast.success(`Usuário ${novoUsuario.nome} criado com sucesso!`);
       setModalUsuarioAberto(false);
       setNovoUsuario({ nome: '', email: '', senha: '', role: 'sdr' });
-    } catch (error) {
+      
+      // Recarregar lista de usuários (você precisará implementar isso)
+      // carregarUsuarios();
+    } catch (error: any) {
       console.error('Erro ao criar usuário:', error);
-      toast.error('Erro ao criar usuário');
+      const errorMessage = error?.message || 'Erro ao criar usuário';
+      
+      if (errorMessage.includes('already registered')) {
+        toast.error('Este email já está cadastrado');
+      } else if (errorMessage.includes('Invalid email')) {
+        toast.error('Email inválido');
+      } else {
+        toast.error(errorMessage);
+      }
     } finally {
       setLoading(false);
     }

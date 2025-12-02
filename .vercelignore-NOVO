@@ -1,0 +1,2 @@
+# Ignore lockfile to force Vercel to regenerate it
+pnpm-lock.yaml
