@@ -87,6 +87,7 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('🚀 Login iniciado');
 
     if (!email || !senha) {
       toast.error('Preencha email e senha');
@@ -99,21 +100,31 @@ export default function LoginPage() {
     }
 
     setLoading(true);
+    console.log('📧 Email:', email);
+    console.log('🎯 Role selecionado:', roleSelected);
 
     try {
       // 1. Autenticar com Supabase
+      console.log('🔐 Tentando autenticar...');
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password: senha,
       });
 
-      if (authError) throw authError;
+      if (authError) {
+        console.error('❌ Erro de autenticação:', authError);
+        throw authError;
+      }
 
       if (!authData.user) {
+        console.error('❌ Usuário não retornado');
         throw new Error('Usuário não encontrado');
       }
 
+      console.log('✅ Autenticado! User ID:', authData.user.id);
+
       // 2. Buscar dados do usuário na tabela users
+      console.log('📊 Buscando dados na tabela users...');
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('*')
@@ -121,12 +132,20 @@ export default function LoginPage() {
         .single();
 
       if (userError) {
-        console.error('Erro ao buscar dados do usuário:', userError);
-        throw new Error('Erro ao carregar dados do usuário');
+        console.error('❌ Erro ao buscar dados do usuário:', userError);
+        throw new Error('Erro ao carregar dados do usuário. Verifique se o registro existe na tabela users.');
       }
+
+      if (!userData) {
+        console.error('❌ Usuário não encontrado na tabela users');
+        throw new Error('Usuário não cadastrado no sistema. Entre em contato com o administrador.');
+      }
+
+      console.log('✅ Dados encontrados:', userData);
 
       // 3. Verificar se o role corresponde
       if (userData.role !== roleSelected) {
+        console.error('❌ Role não corresponde:', userData.role, 'vs', roleSelected);
         toast.error(`Este usuário não tem acesso como ${roles.find(r => r.value === roleSelected)?.label}`);
         await supabase.auth.signOut();
         setLoading(false);
@@ -135,6 +154,7 @@ export default function LoginPage() {
 
       // 4. Verificar se está ativo
       if (!userData.ativo) {
+        console.error('❌ Usuário inativo');
         toast.error('Usuário inativo. Entre em contato com o administrador.');
         await supabase.auth.signOut();
         setLoading(false);
@@ -142,41 +162,53 @@ export default function LoginPage() {
       }
 
       // 5. Salvar role no localStorage
+      console.log('💾 Salvando no localStorage...');
       localStorage.setItem('user-role', userData.role);
       localStorage.setItem('user-name', userData.nome);
 
+      console.log('🎉 Login bem-sucedido!');
       toast.success(`Bem-vindo(a), ${userData.nome}!`);
 
       // 6. Redirecionar baseado no role
+      console.log('🔄 Redirecionando para:', userData.role);
       setTimeout(() => {
         switch (userData.role) {
           case 'admin':
+            console.log('➡️ Redirecionando para /admin');
             router.push('/admin');
             break;
           case 'gestor':
+            console.log('➡️ Redirecionando para /admin (gestor)');
             router.push('/admin'); // Gestor também tem acesso ao admin
             break;
           case 'cs':
+            console.log('➡️ Redirecionando para /cs');
             router.push('/cs');
             break;
           case 'sdr':
+            console.log('➡️ Redirecionando para /sdr');
             router.push('/sdr');
             break;
           case 'closer':
+            console.log('➡️ Redirecionando para /closer');
             router.push('/closer');
             break;
           case 'social-seller':
+            console.log('➡️ Redirecionando para /social-seller');
             router.push('/social-seller');
             break;
           default:
+            console.log('➡️ Redirecionando para /');
             router.push('/');
         }
       }, 1000);
 
     } catch (error: any) {
-      console.error('Erro no login:', error);
+      console.error('❌ ERRO NO LOGIN:', error);
+      console.error('Detalhes:', error.message, error.details);
       toast.error(error.message || 'Email ou senha incorretos');
     } finally {
+      console.log('🏁 Finalizando processo de login');
       setLoading(false);
     }
   };
