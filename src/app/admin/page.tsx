@@ -185,6 +185,11 @@ export default function PainelAdmin() {
   const carregarUsuarios = async () => {
     try {
       console.log('📊 Carregando usuários...');
+      
+      // Verificar sessão atual
+      const { data: sessionData } = await supabase.auth.getSession();
+      console.log('👤 Sessão atual:', sessionData?.session?.user?.email);
+      
       const { data, error } = await supabase
         .from('users')
         .select('*')
@@ -192,14 +197,20 @@ export default function PainelAdmin() {
 
       if (error) {
         console.error('❌ Erro ao carregar usuários:', error);
-        toast.error('Erro ao carregar usuários');
+        console.error('❌ Detalhes:', error.message, error.hint);
+        toast.error('Erro ao carregar usuários: ' + error.message);
         return;
       }
 
       console.log('✅ Usuários carregados:', data);
+      console.log('📈 Total:', data?.length || 0);
       setUsuarios(data || []);
-    } catch (error) {
-      console.error('❌ Erro:', error);
+      
+      if (!data || data.length === 0) {
+        console.warn('⚠️ Nenhum usuário encontrado no banco!');
+      }
+    } catch (error: any) {
+      console.error('❌ Erro exception:', error);
       toast.error('Erro ao carregar usuários');
     }
   };
@@ -294,6 +305,64 @@ export default function PainelAdmin() {
     } catch (error: any) {
       console.error('❌ Erro geral:', error);
       toast.error('Erro ao criar usuário');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExcluirUsuario = async (usuarioId: string, usuarioNome: string) => {
+    if (!confirm(`Deseja realmente excluir o usuário "${usuarioNome}"?`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log('🗑️ Excluindo usuário:', usuarioId);
+
+      const { error } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', usuarioId);
+
+      if (error) {
+        console.error('❌ Erro ao excluir:', error);
+        toast.error('Erro ao excluir usuário: ' + error.message);
+        return;
+      }
+
+      console.log('✅ Usuário excluído!');
+      toast.success('Usuário excluído com sucesso!');
+      await carregarUsuarios();
+    } catch (error: any) {
+      console.error('❌ Erro:', error);
+      toast.error('Erro ao excluir usuário');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleAtivo = async (usuarioId: string, ativoAtual: boolean) => {
+    try {
+      setLoading(true);
+      console.log('🔄 Alterando status:', usuarioId, !ativoAtual);
+
+      const { error } = await supabase
+        .from('users')
+        .update({ ativo: !ativoAtual })
+        .eq('id', usuarioId);
+
+      if (error) {
+        console.error('❌ Erro ao atualizar:', error);
+        toast.error('Erro ao atualizar status: ' + error.message);
+        return;
+      }
+
+      console.log('✅ Status atualizado!');
+      toast.success(ativoAtual ? 'Usuário desativado' : 'Usuário ativado');
+      await carregarUsuarios();
+    } catch (error: any) {
+      console.error('❌ Erro:', error);
+      toast.error('Erro ao atualizar status');
     } finally {
       setLoading(false);
     }
@@ -788,13 +857,20 @@ export default function PainelAdmin() {
                               <Badge className={roleColors[usuario.role]}>
                                 {roleLabels[usuario.role]}
                               </Badge>
-                              <Badge variant={usuario.ativo ? 'default' : 'secondary'}>
+                              <Badge 
+                                variant={usuario.ativo ? 'default' : 'secondary'}
+                                className="cursor-pointer"
+                                onClick={() => handleToggleAtivo(usuario.id, usuario.ativo)}
+                              >
                                 {usuario.ativo ? 'Ativo' : 'Inativo'}
                               </Badge>
-                              <Button size="sm" variant="ghost" className="text-gray-400 hover:text-white">
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300">
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="text-red-400 hover:text-red-300"
+                                onClick={() => handleExcluirUsuario(usuario.id, usuario.nome)}
+                                disabled={loading}
+                              >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
