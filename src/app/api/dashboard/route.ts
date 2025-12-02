@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase-server';
 import { cookies } from 'next/headers';
 import type { 
   DashboardResponse, 
@@ -10,7 +10,7 @@ import type {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
     
     // Verificar autenticação
     const { data: { session } } = await supabase.auth.getSession();

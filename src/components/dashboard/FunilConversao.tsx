@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Users, Eye, MousePointer, ExternalLink, UserCheck, ShoppingCart, Crown, Target, ArrowRight, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { supabase } from '@/lib/supabase';
 
 interface FunilEtapa {
   id: string;
@@ -34,7 +34,6 @@ interface MetricasAnterior {
 export function FunilConversao() {
   const { metricasCampanha, campanhaAtiva, filtroData } = useCampanhaContext();
   const [metricasAnterior, setMetricasAnterior] = useState<MetricasAnterior | null>(null);
-  const supabase = createClientComponentClient();
 
   // Função para calcular período anterior
   const calcularPeriodoAnterior = () => {
