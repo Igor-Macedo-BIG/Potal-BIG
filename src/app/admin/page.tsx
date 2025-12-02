@@ -8,6 +8,20 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useTheme } from '@/contexts/ThemeContext';
 import { 
   Users, 
@@ -164,8 +178,121 @@ export default function PainelAdmin() {
 
   // Carregar funis e campanhas ao montar
   useEffect(() => {
+    carregarUsuarios();
     carregarFunis();
   }, []);
+
+  const carregarUsuarios = async () => {
+    try {
+      console.log('📊 Carregando usuários...');
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: false});
+
+      if (error) {
+        console.error('❌ Erro ao carregar usuários:', error);
+        toast.error('Erro ao carregar usuários');
+        return;
+      }
+
+      console.log('✅ Usuários carregados:', data);
+      setUsuarios(data || []);
+    } catch (error) {
+      console.error('❌ Erro:', error);
+      toast.error('Erro ao carregar usuários');
+    }
+  };
+
+  const handleCriarUsuario = async () => {
+    try {
+      // Validações
+      if (!novoUsuario.nome || !novoUsuario.email || !novoUsuario.senha) {
+        toast.error('Preencha todos os campos');
+        return;
+      }
+
+      // Validar email
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(novoUsuario.email)) {
+        toast.error('Email inválido');
+        return;
+      }
+
+      // Validar senha
+      if (novoUsuario.senha.length < 6) {
+        toast.error('A senha deve ter no mínimo 6 caracteres');
+        return;
+      }
+
+      setLoading(true);
+      console.log('🔐 Criando usuário no Supabase Auth...');
+
+      // 1. Criar usuário no Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: novoUsuario.email,
+        password: novoUsuario.senha,
+        options: {
+          data: {
+            nome: novoUsuario.nome,
+          }
+        }
+      });
+
+      if (authError) {
+        console.error('❌ Erro ao criar auth:', authError);
+        if (authError.message.includes('already registered')) {
+          toast.error('Este email já está cadastrado');
+        } else {
+          toast.error('Erro ao criar usuário: ' + authError.message);
+        }
+        return;
+      }
+
+      if (!authData.user) {
+        toast.error('Erro ao criar usuário');
+        return;
+      }
+
+      console.log('✅ Auth criado! User ID:', authData.user.id);
+
+      // 2. Criar registro na tabela users
+      console.log('💾 Inserindo na tabela users...');
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert({
+          id: authData.user.id,
+          nome: novoUsuario.nome,
+          email: novoUsuario.email,
+          role: novoUsuario.role,
+          ativo: true
+        });
+
+      if (insertError) {
+        console.error('❌ Erro ao inserir na tabela:', insertError);
+        // Tentar fazer rollback deletando o usuário do auth
+        await supabase.auth.admin.deleteUser(authData.user.id);
+        toast.error('Erro ao criar registro do usuário');
+        return;
+      }
+
+      console.log('✅ Usuário criado com sucesso!');
+      toast.success('Usuário criado com sucesso!');
+      
+      // Limpar form e fechar modal
+      setNovoUsuario({ nome: '', email: '', senha: '', role: 'sdr' });
+      setModalUsuarioAberto(false);
+      
+      // Recarregar lista
+      await carregarUsuarios();
+
+    } catch (error: any) {
+      console.error('❌ Erro geral:', error);
+      toast.error('Erro ao criar usuário');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const carregarFunis = async () => {
     setLoading(true);
@@ -608,23 +735,28 @@ export default function PainelAdmin() {
 
                   {/* User List */}
                   <div className="grid gap-3">
-                    {/* Mock data - substituir por dados reais */}
-                    {[
-                      { id: '1', nome: 'Admin Sistema', email: 'admin@exemplo.com', role: 'admin' as UserRole, ativo: true },
-                      { id: '2', nome: 'João Silva', email: 'joao@exemplo.com', role: 'sdr' as UserRole, ativo: true },
-                      { id: '3', nome: 'Maria Santos', email: 'maria@exemplo.com', role: 'closer' as UserRole, ativo: true },
-                    ].map((usuario) => {
-                      const IconRole = roleIcons[usuario.role];
-                      return (
-                        <div
-                          key={usuario.id}
-                          className="bg-gray-900/50 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="h-10 w-10 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full flex items-center justify-center">
-                                <IconRole className="h-5 w-5 text-white" />
-                              </div>
+                    {usuarios.length === 0 ? (
+                      <div className="text-center py-8 text-gray-400">
+                        Nenhum usuário encontrado
+                      </div>
+                    ) : (
+                      usuarios
+                        .filter((usuario) => 
+                          usuario.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          usuario.email.toLowerCase().includes(searchTerm.toLowerCase())
+                        )
+                        .map((usuario) => {
+                          const IconRole = roleIcons[usuario.role];
+                          return (
+                            <div
+                              key={usuario.id}
+                              className="bg-gray-900/50 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div className="h-10 w-10 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full flex items-center justify-center">
+                                    <IconRole className="h-5 w-5 text-white" />
+                                  </div>
                               <div>
                                 <h4 className="text-white font-medium">{usuario.nome}</h4>
                                 <p className="text-sm text-gray-400">{usuario.email}</p>
@@ -647,7 +779,7 @@ export default function PainelAdmin() {
                           </div>
                         </div>
                       );
-                    })}
+                    }))}
                   </div>
                 </CardContent>
               </Card>
@@ -1581,6 +1713,111 @@ export default function PainelAdmin() {
           </div>
         </div>
       )}
+
+      {/* Modal: Criar Usuário */}
+      <Dialog open={modalUsuarioAberto} onOpenChange={setModalUsuarioAberto}>
+        <DialogContent className="bg-gray-800 border-gray-700 text-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-purple-400" />
+              Criar Novo Usuário
+            </DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Preencha os dados do novo usuário do sistema
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label htmlFor="nome">Nome Completo</Label>
+              <Input
+                id="nome"
+                placeholder="Igor Macedo"
+                value={novoUsuario.nome}
+                onChange={(e) => setNovoUsuario({ ...novoUsuario, nome: e.target.value })}
+                className="bg-gray-900 border-gray-600 text-white"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="igorwillian.macedo@gmail.com"
+                value={novoUsuario.email}
+                onChange={(e) => setNovoUsuario({ ...novoUsuario, email: e.target.value })}
+                className="bg-gray-900 border-gray-600 text-white"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="senha">Senha</Label>
+              <Input
+                id="senha"
+                type="password"
+                placeholder="Mínimo 6 caracteres"
+                value={novoUsuario.senha}
+                onChange={(e) => setNovoUsuario({ ...novoUsuario, senha: e.target.value })}
+                className="bg-gray-900 border-gray-600 text-white"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="funcao">Função</Label>
+              <Select
+                value={novoUsuario.role}
+                onValueChange={(value) => setNovoUsuario({ ...novoUsuario, role: value as UserRole })}
+              >
+                <SelectTrigger className="bg-gray-900 border-gray-600 text-white">
+                  <SelectValue placeholder="Selecione a função" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-800 border-gray-700">
+                  <SelectItem value="admin" className="text-white hover:bg-gray-700">
+                    Administrador - Acesso Total
+                  </SelectItem>
+                  <SelectItem value="gestor" className="text-white hover:bg-gray-700">
+                    Gestor de Marketing
+                  </SelectItem>
+                  <SelectItem value="sdr" className="text-white hover:bg-gray-700">
+                    SDR
+                  </SelectItem>
+                  <SelectItem value="closer" className="text-white hover:bg-gray-700">
+                    Closer
+                  </SelectItem>
+                  <SelectItem value="social-seller" className="text-white hover:bg-gray-700">
+                    Social Seller
+                  </SelectItem>
+                  <SelectItem value="cs" className="text-white hover:bg-gray-700">
+                    Customer Success
+                  </SelectItem>
+                  <SelectItem value="trafego" className="text-white hover:bg-gray-700">
+                    Tráfego Pago
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <Button
+                onClick={() => setModalUsuarioAberto(false)}
+                variant="outline"
+                className="flex-1 border-gray-600"
+                disabled={loading}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCriarUsuario}
+                disabled={loading}
+                className="flex-1 bg-purple-600 hover:bg-purple-700"
+              >
+                {loading ? 'Criando...' : 'Criar Usuário'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </LayoutComFunis>
   );
 }
