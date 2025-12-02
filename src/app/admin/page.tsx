@@ -717,13 +717,23 @@ export default function PainelAdmin() {
                         Crie e gerencie usuários do sistema
                       </CardDescription>
                     </div>
-                    <Button
-                      onClick={() => setModalUsuarioAberto(true)}
-                      className="bg-purple-600 hover:bg-purple-700"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Novo Usuário
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => carregarUsuarios()}
+                        variant="outline"
+                        className="border-gray-600"
+                        disabled={loading}
+                      >
+                        {loading ? 'Carregando...' : 'Recarregar'}
+                      </Button>
+                      <Button
+                        onClick={() => setModalUsuarioAberto(true)}
+                        className="bg-purple-600 hover:bg-purple-700"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Novo Usuário
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -738,11 +748,18 @@ export default function PainelAdmin() {
                     />
                   </div>
 
+                  {/* Debug Info */}
+                  <div className="text-xs text-gray-500">
+                    Total de usuários: {usuarios.length}
+                  </div>
+
                   {/* User List */}
                   <div className="grid gap-3">
                     {usuarios.length === 0 ? (
                       <div className="text-center py-8 text-gray-400">
-                        Nenhum usuário encontrado
+                        <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                        <p>Nenhum usuário encontrado</p>
+                        <p className="text-xs mt-1">Clique em "Novo Usuário" para adicionar</p>
                       </div>
                     ) : (
                       usuarios

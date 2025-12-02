@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -49,6 +49,7 @@ interface SidebarProps {
 
 export function SidebarComFunis({ empresaNome }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { selecionarCampanha, campanhaAtiva } = useCampanhaContext();
   const [funis, setFunis] = useState<Funil[]>([]);
   const [campanhasPorFunil, setCampanhasPorFunil] = useState<Record<string, Campanha[]>>({});
@@ -184,6 +185,32 @@ export function SidebarComFunis({ empresaNome }: SidebarProps) {
     } catch (error) {
       console.error('Erro ao excluir campanha:', error);
       toast.error('Erro interno. Tente novamente.');
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      console.log('🚪 Fazendo logout...');
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) {
+        console.error('❌ Erro ao fazer logout:', error);
+        toast.error('Erro ao sair');
+        return;
+      }
+
+      // Limpar localStorage
+      localStorage.removeItem('user-role');
+      localStorage.removeItem('user-name');
+      
+      console.log('✅ Logout realizado com sucesso!');
+      toast.success('Até logo!');
+      
+      // Redirecionar para login
+      router.push('/login');
+    } catch (error) {
+      console.error('❌ Erro:', error);
+      toast.error('Erro ao sair');
     }
   };
 
