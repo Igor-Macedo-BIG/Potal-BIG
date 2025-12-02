@@ -228,14 +228,15 @@ export default function PainelAdmin() {
       setLoading(true);
       console.log('🔐 Criando usuário no Supabase Auth...');
 
-      // 1. Criar usuário no Supabase Auth
+      // Criar usuário no Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: novoUsuario.email,
         password: novoUsuario.senha,
         options: {
           data: {
             nome: novoUsuario.nome,
-          }
+          },
+          emailRedirectTo: `${window.location.origin}/login`
         }
       });
 
@@ -246,17 +247,22 @@ export default function PainelAdmin() {
         } else {
           toast.error('Erro ao criar usuário: ' + authError.message);
         }
+        setLoading(false);
         return;
       }
 
       if (!authData.user) {
         toast.error('Erro ao criar usuário');
+        setLoading(false);
         return;
       }
 
       console.log('✅ Auth criado! User ID:', authData.user.id);
 
-      // 2. Criar registro na tabela users
+      // Pequeno delay para garantir que o auth foi processado
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Criar registro na tabela users
       console.log('💾 Inserindo na tabela users...');
       const { error: insertError } = await supabase
         .from('users')
@@ -270,9 +276,8 @@ export default function PainelAdmin() {
 
       if (insertError) {
         console.error('❌ Erro ao inserir na tabela:', insertError);
-        // Tentar fazer rollback deletando o usuário do auth
-        await supabase.auth.admin.deleteUser(authData.user.id);
-        toast.error('Erro ao criar registro do usuário');
+        toast.error('Erro ao criar registro: ' + insertError.message);
+        setLoading(false);
         return;
       }
 
