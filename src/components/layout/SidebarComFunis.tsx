@@ -143,10 +143,6 @@ export function SidebarComFunis({ empresaNome }: SidebarProps) {
     setFunisExpandidos(novosExpandidos);
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
-
   const handleFunilCriado = () => {
     carregarFunis();
   };
