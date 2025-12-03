@@ -7,12 +7,13 @@ const publicRoutes = ['/login'];
 
 // Mapeamento de roles para suas rotas permitidas
 const roleRoutes: Record<string, string[]> = {
-  admin: ['/admin', '/dashboard', '/api'],
-  gestor: ['/admin', '/dashboard', '/api'],
-  cs: ['/cs', '/dashboard', '/api'],
-  sdr: ['/sdr', '/dashboard', '/api'],
-  closer: ['/closer', '/dashboard', '/api'],
-  'social-seller': ['/social-seller', '/dashboard', '/api'],
+  admin: ['/admin', '/dashboard', '/trafego', '/sdr', '/closer', '/social-seller', '/cs', '/', '/api'], // Admin acessa tudo
+  gestor: ['/admin', '/dashboard', '/trafego', '/sdr', '/closer', '/social-seller', '/cs', '/', '/api'], // Gestor acessa tudo
+  trafego: ['/trafego', '/dashboard', '/', '/api'], // Só tráfego
+  cs: ['/cs', '/dashboard', '/', '/api'], // Só CS
+  sdr: ['/sdr', '/dashboard', '/', '/api'], // Só SDR
+  closer: ['/closer', '/dashboard', '/', '/api'], // Só Closer
+  'social-seller': ['/social-seller', '/dashboard', '/', '/api'], // Só Social Seller
 };
 
 export async function middleware(req: NextRequest) {

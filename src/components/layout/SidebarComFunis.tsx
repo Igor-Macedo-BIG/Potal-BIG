@@ -34,13 +34,13 @@ import {
 import type { Funil, Campanha } from '@/types/hierarchical';
 
 const navigationBase = [
-  { name: 'Painel Admin', href: '/admin', icon: Shield, adminOnly: true },
-  { name: 'Dashboard', href: '/', icon: Home },
-  { name: 'Tráfego', href: '/trafego', icon: Megaphone },
-  { name: 'SDR', href: '/sdr', icon: Phone },
-  { name: 'Closer', href: '/closer', icon: Handshake },
-  { name: 'Social Seller', href: '/social-seller', icon: Share2 },
-  { name: 'Customer Success', href: '/cs', icon: HeadphonesIcon },
+  { name: 'Painel Admin', href: '/admin', icon: Shield, roles: ['admin', 'gestor'] },
+  { name: 'Dashboard', href: '/', icon: Home, roles: ['admin', 'gestor', 'trafego', 'sdr', 'closer', 'social-seller', 'cs'] },
+  { name: 'Tráfego', href: '/trafego', icon: Megaphone, roles: ['admin', 'gestor', 'trafego'] },
+  { name: 'SDR', href: '/sdr', icon: Phone, roles: ['admin', 'gestor', 'sdr'] },
+  { name: 'Closer', href: '/closer', icon: Handshake, roles: ['admin', 'gestor', 'closer'] },
+  { name: 'Social Seller', href: '/social-seller', icon: Share2, roles: ['admin', 'gestor', 'social-seller'] },
+  { name: 'Customer Success', href: '/cs', icon: HeadphonesIcon, roles: ['admin', 'gestor', 'cs'] },
 ];
 
 interface SidebarProps {
@@ -56,10 +56,32 @@ export function SidebarComFunis({ empresaNome }: SidebarProps) {
   const [funisExpandidos, setFunisExpandidos] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [modalCriacaoAberto, setModalCriacaoAberto] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
     carregarFunis();
+    carregarUserRole();
   }, []);
+
+  const carregarUserRole = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+        
+        if (userData) {
+          setUserRole(userData.role);
+          console.log('👤 Role do usuário:', userData.role);
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao carregar role:', error);
+    }
+  };
 
   const carregarFunis = async () => {
     setLoading(true);
@@ -235,12 +257,12 @@ export function SidebarComFunis({ empresaNome }: SidebarProps) {
       {/* Navegação */}
       <nav className="flex-1 space-y-2 px-3 py-6 overflow-y-auto">
         {/* Navegação base */}
-        {navigationBase.map((item) => {
-          // Por enquanto, mostrar sempre (depois implementar lógica de admin)
-          // if (item.adminOnly && !isAdmin) return null;
-          
+        {navigationBase
+          .filter((item) => !userRole || item.roles.includes(userRole))
+          .map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
+          const isAdminRoute = item.roles.includes('admin') && item.roles.length <= 2; // Admin ou Gestor apenas
 
           return (
             <Link key={item.name} href={item.href}>
@@ -251,7 +273,7 @@ export function SidebarComFunis({ empresaNome }: SidebarProps) {
                   isActive
                     ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-white border border-cyan-500/30 shadow-lg shadow-cyan-500/20'
                     : 'text-slate-300 hover:bg-gradient-to-r hover:from-slate-800/50 hover:to-slate-700/50 hover:text-white border border-transparent hover:border-slate-600/30',
-                  item.adminOnly && 'bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-purple-500/20'
+                  isAdminRoute && 'bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-purple-500/20'
                 )}
                 onClick={() => {
                   if (item.name === 'Dashboard') {
@@ -265,10 +287,10 @@ export function SidebarComFunis({ empresaNome }: SidebarProps) {
                 )}
                 <Icon className={cn(
                   "mr-3 h-4 w-4 relative z-10 transition-all duration-300",
-                  isActive ? "text-cyan-400" : item.adminOnly ? "text-purple-400" : "group-hover:text-purple-400"
+                  isActive ? "text-cyan-400" : isAdminRoute ? "text-purple-400" : "group-hover:text-purple-400"
                 )} />
                 <span className="relative z-10 font-medium">{item.name}</span>
-                {item.adminOnly && (
+                {isAdminRoute && (
                   <Badge className="ml-auto bg-purple-500/20 text-purple-300 border-purple-500/30 text-xs">
                     Admin
                   </Badge>
