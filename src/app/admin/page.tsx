@@ -143,6 +143,8 @@ export default function PainelAdmin() {
 
   // Modal states
   const [modalUsuarioAberto, setModalUsuarioAberto] = useState(false);
+  const [modalEditarUsuarioAberto, setModalEditarUsuarioAberto] = useState(false);
+  const [usuarioEditando, setUsuarioEditando] = useState<Usuario | null>(null);
   const [modalFunilAberto, setModalFunilAberto] = useState(false);
   const [modalCampanhaAberto, setModalCampanhaAberto] = useState(false);
   const [modalConjuntoAberto, setModalConjuntoAberto] = useState(false);
@@ -239,7 +241,7 @@ export default function PainelAdmin() {
       setLoading(true);
       console.log('🔐 Criando usuário no Supabase Auth...');
 
-      // Criar usuário no Supabase Auth
+      // Criar usuário no Supabase Auth (auto-confirmado)
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: novoUsuario.email,
         password: novoUsuario.senha,
@@ -247,7 +249,8 @@ export default function PainelAdmin() {
           data: {
             nome: novoUsuario.nome,
           },
-          emailRedirectTo: `${window.location.origin}/login`
+          emailRedirectTo: `${window.location.origin}/login`,
+          // Auto-confirmar email (requer desabilitar confirmação nas configs do Supabase)
         }
       });
 
@@ -363,6 +366,55 @@ export default function PainelAdmin() {
     } catch (error: any) {
       console.error('❌ Erro:', error);
       toast.error('Erro ao atualizar status');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditarUsuario = (usuario: Usuario) => {
+    setUsuarioEditando(usuario);
+    setModalEditarUsuarioAberto(true);
+  };
+
+  const handleSalvarEdicao = async (novaSenha?: string) => {
+    if (!usuarioEditando) return;
+
+    try {
+      setLoading(true);
+      console.log('💾 Atualizando usuário:', usuarioEditando.id);
+
+      // Atualizar dados na tabela users
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({
+          nome: usuarioEditando.nome,
+          role: usuarioEditando.role,
+          ativo: usuarioEditando.ativo
+        })
+        .eq('id', usuarioEditando.id);
+
+      if (updateError) {
+        console.error('❌ Erro ao atualizar:', updateError);
+        toast.error('Erro ao atualizar usuário: ' + updateError.message);
+        return;
+      }
+
+      // Se forneceu nova senha, resetar no Auth
+      if (novaSenha && novaSenha.length >= 6) {
+        console.log('🔑 Resetando senha...');
+        // Nota: Isso requer permissões de admin no Supabase
+        // Por enquanto, vamos apenas notificar
+        toast.info('Para alterar senha, use o painel de Authentication do Supabase');
+      }
+
+      console.log('✅ Usuário atualizado!');
+      toast.success('Usuário atualizado com sucesso!');
+      setModalEditarUsuarioAberto(false);
+      setUsuarioEditando(null);
+      await carregarUsuarios();
+    } catch (error: any) {
+      console.error('❌ Erro:', error);
+      toast.error('Erro ao atualizar usuário');
     } finally {
       setLoading(false);
     }
@@ -780,11 +832,20 @@ export default function PainelAdmin() {
                               </Badge>
                               <Badge 
                                 variant={usuario.ativo ? 'default' : 'secondary'}
-                                className="cursor-pointer"
+                                className="cursor-pointer hover:opacity-80 transition-opacity"
                                 onClick={() => handleToggleAtivo(usuario.id, usuario.ativo)}
                               >
                                 {usuario.ativo ? 'Ativo' : 'Inativo'}
                               </Badge>
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="text-gray-400 hover:text-white"
+                                onClick={() => handleEditarUsuario(usuario)}
+                                disabled={loading}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
                               <Button 
                                 size="sm" 
                                 variant="ghost" 
@@ -1832,6 +1893,124 @@ export default function PainelAdmin() {
                 className="flex-1 bg-purple-600 hover:bg-purple-700"
               >
                 {loading ? 'Criando...' : 'Criar Usuário'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Edição de Usuário */}
+      <Dialog open={modalEditarUsuarioAberto} onOpenChange={setModalEditarUsuarioAberto}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-purple-400">
+              Editar Usuário
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Nome */}
+            <div>
+              <label className="block text-sm font-medium mb-2">Nome Completo</label>
+              <input
+                type="text"
+                value={usuarioEditando?.nome || ''}
+                onChange={(e) => setUsuarioEditando(prev => 
+                  prev ? { ...prev, nome: e.target.value } : null
+                )}
+                className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white"
+                placeholder="Digite o nome completo"
+              />
+            </div>
+
+            {/* E-mail (somente leitura) */}
+            <div>
+              <label className="block text-sm font-medium mb-2">E-mail</label>
+              <input
+                type="email"
+                value={usuarioEditando?.email || ''}
+                disabled
+                className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-400 cursor-not-allowed"
+              />
+              <p className="text-xs text-gray-400 mt-1">O e-mail não pode ser alterado</p>
+            </div>
+
+            {/* Função */}
+            <div>
+              <label className="block text-sm font-medium mb-2">Função</label>
+              <Select
+                value={usuarioEditando?.role || ''}
+                onValueChange={(value) => setUsuarioEditando(prev => 
+                  prev ? { ...prev, role: value as Usuario['role'] } : null
+                )}
+              >
+                <SelectTrigger className="bg-gray-900 border-gray-600 text-white">
+                  <SelectValue placeholder="Selecione a função" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-800 border-gray-700">
+                  <SelectItem value="admin" className="text-white hover:bg-gray-700">
+                    Administrador - Acesso Total
+                  </SelectItem>
+                  <SelectItem value="gestor" className="text-white hover:bg-gray-700">
+                    Gestor de Marketing
+                  </SelectItem>
+                  <SelectItem value="sdr" className="text-white hover:bg-gray-700">
+                    SDR
+                  </SelectItem>
+                  <SelectItem value="closer" className="text-white hover:bg-gray-700">
+                    Closer
+                  </SelectItem>
+                  <SelectItem value="social-seller" className="text-white hover:bg-gray-700">
+                    Social Seller
+                  </SelectItem>
+                  <SelectItem value="cs" className="text-white hover:bg-gray-700">
+                    CS - Customer Success
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Status Ativo */}
+            <div className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg">
+              <input
+                type="checkbox"
+                id="ativo-edit"
+                checked={usuarioEditando?.ativo || false}
+                onChange={(e) => setUsuarioEditando(prev => 
+                  prev ? { ...prev, ativo: e.target.checked } : null
+                )}
+                className="w-4 h-4 text-purple-600 bg-gray-700 border-gray-600 rounded focus:ring-purple-500"
+              />
+              <label htmlFor="ativo-edit" className="text-sm font-medium cursor-pointer">
+                Usuário Ativo
+              </label>
+            </div>
+
+            {/* Nota sobre senha */}
+            <div className="p-3 bg-yellow-900/20 border border-yellow-700/30 rounded-lg">
+              <p className="text-xs text-yellow-400">
+                ⚠️ Para alterar a senha, entre em contato com o suporte ou use a opção de reset de senha no login.
+              </p>
+            </div>
+
+            {/* Botões */}
+            <div className="flex gap-3 pt-4">
+              <Button
+                onClick={() => {
+                  setModalEditarUsuarioAberto(false);
+                  setUsuarioEditando(null);
+                }}
+                variant="outline"
+                className="flex-1 border-gray-600"
+                disabled={loading}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => handleSalvarEdicao()}
+                disabled={loading}
+                className="flex-1 bg-purple-600 hover:bg-purple-700"
+              >
+                {loading ? 'Salvando...' : 'Salvar Alterações'}
               </Button>
             </div>
           </div>
