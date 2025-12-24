@@ -113,12 +113,26 @@ export default function LoginPage() {
 
       if (authError) {
         console.error('❌ Erro de autenticação:', authError);
-        throw authError;
+        
+        // Tratar erros específicos de autenticação
+        if (authError.message.includes('Invalid login credentials')) {
+          toast.error('Email ou senha incorretos');
+        } else if (authError.message.includes('Email not confirmed')) {
+          toast.error('Email não confirmado. Entre em contato com o administrador.');
+        } else if (authError.message.includes('Email not found')) {
+          toast.error('Email não cadastrado no sistema');
+        } else {
+          toast.error('Erro ao fazer login. Verifique suas credenciais.');
+        }
+        setLoading(false);
+        return;
       }
 
       if (!authData.user) {
         console.error('❌ Usuário não retornado');
-        throw new Error('Usuário não encontrado');
+        toast.error('Erro ao processar login. Tente novamente.');
+        setLoading(false);
+        return;
       }
 
       console.log('✅ Autenticado! User ID:', authData.user.id);
@@ -133,12 +147,18 @@ export default function LoginPage() {
 
       if (userError) {
         console.error('❌ Erro ao buscar dados do usuário:', userError);
-        throw new Error('Erro ao carregar dados do usuário. Verifique se o registro existe na tabela users.');
+        toast.error('Erro ao carregar perfil. Entre em contato com o administrador.');
+        await supabase.auth.signOut();
+        setLoading(false);
+        return;
       }
 
       if (!userData) {
         console.error('❌ Usuário não encontrado na tabela users');
-        throw new Error('Usuário não cadastrado no sistema. Entre em contato com o administrador.');
+        toast.error('Perfil não encontrado no sistema. Entre em contato com o administrador.');
+        await supabase.auth.signOut();
+        setLoading(false);
+        return;
       }
 
       console.log('✅ Dados encontrados:', userData);
@@ -205,9 +225,18 @@ export default function LoginPage() {
 
     } catch (error: any) {
       console.error('❌ ERRO NO LOGIN:', error);
-      console.error('Detalhes:', error.message, error.details);
-      toast.error(error.message || 'Email ou senha incorretos');
+      
+      // Não mostrar erro genérico já que tratamos os erros específicos acima
+      // Isso só vai pegar erros inesperados
+      if (error?.message) {
+        console.error('Detalhes:', error.message);
+      }
+      
+      toast.error('Erro inesperado. Tente novamente ou entre em contato com o suporte.');
     } finally {
+      setLoading(false);
+    }
+  };
       console.log('🏁 Finalizando processo de login');
       setLoading(false);
     }
