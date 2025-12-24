@@ -210,7 +210,7 @@ export default function FiltrosDashboard({ onFiltroChange, filtroAtual, campanha
         <div className="mt-4 grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label htmlFor="dataInicio" className="text-xs text-slate-300">
-              Data InÃ­cio
+              Data Início
             </Label>
             <Input
               id="dataInicio"
@@ -237,10 +237,10 @@ export default function FiltrosDashboard({ onFiltroChange, filtroAtual, campanha
         </div>
       )}
 
-      {/* InformaÃ§Ã£o do perÃ­odo atual */}
+      {/* Informação do período atual */}
       <div className="mt-3 flex items-center justify-between">
         <div className="text-xs text-slate-400">
-          PerÃ­odo: {new Date(filtroAtual.dataInicio).toLocaleDateString('pt-BR')} atÃ© {new Date(filtroAtual.dataFim).toLocaleDateString('pt-BR')}
+          Período: {filtroAtual.dataInicio.split('-').reverse().join('/')} até {filtroAtual.dataFim.split('-').reverse().join('/')}
         </div>
         
         {/* Botão Editar Métricas removido — não renderizar na barra de período */}
