@@ -16,10 +16,15 @@ interface CampanhaContextType {
   metricasGerais: MetricasAgregadas | null; // Nova propriedade para métricas gerais
   loading: boolean;
   filtroData: FiltroData;
+  filtroHierarquico: { tipo: 'funil' | 'campanha' | 'publico' | 'criativo' | null; id: string | null } | null;
   selecionarCampanha: (campanha: Campanha | null) => void;
   limparSelecao: () => void;
+  limparMetricasCampanha: () => void;
   atualizarFiltroData: (filtro: FiltroData) => void;
   recarregarMetricas: () => void;
+  buscarMetricasPorFunil: (funilId: string, filtro?: FiltroData) => Promise<void>;
+  buscarMetricasPorPublico: (publicoId: string, filtro?: FiltroData) => Promise<void>;
+  buscarMetricasPorCriativo: (criativoId: string, filtro?: FiltroData) => Promise<void>;
 }
 
 const CampanhaContext = createContext<CampanhaContextType | undefined>(undefined);
@@ -41,6 +46,7 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
   const [metricasCampanha, setMetricasCampanha] = useState<MetricasAgregadas | null>(null);
   const [metricasGerais, setMetricasGerais] = useState<MetricasAgregadas | null>(null);
   const [loading, setLoading] = useState(false);
+  const [filtroHierarquico, setFiltroHierarquico] = useState<{ tipo: 'funil' | 'campanha' | 'publico' | 'criativo' | null; id: string | null } | null>(null);
   
   // Filtro padrão: carregar de localStorage se disponível, senão usar mês atual
   const [filtroData, setFiltroData] = useState<FiltroData>(() => {
@@ -108,17 +114,83 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
     setLoading(true);
     const filtroAtual = filtro || filtroData;
 
+    console.log('🔍 BUSCANDO MÉTRICAS DA CAMPANHA:', {
+      campanhaId,
+      filtroDataInicio: filtroAtual.dataInicio,
+      filtroDataFim: filtroAtual.dataFim,
+      tipo: 'campanha'
+    });
+
     try {
-      // Registros totalmente contidos dentro do período
-      // Obs.: não usamos overlap aqui para evitar dupla contagem (ex.: mês + semana).
-      const { data: metricasArray, error } = await supabase
-        .from('metricas')
-        .select('*')
-        .eq('tipo', 'campanha')
-        .eq('referencia_id', campanhaId)
-        .gte('periodo_inicio', filtroAtual.dataInicio)
-        .lte('periodo_fim', filtroAtual.dataFim)
-        .order('periodo_inicio', { ascending: true });
+      // Buscar públicos da campanha
+      const { data: publicosCampanha } = await supabase
+        .from('conjuntos_anuncio')
+        .select('id')
+        .eq('campanha_id', campanhaId);
+
+      const publicoIds = publicosCampanha?.map(p => p.id) || [];
+
+      // Buscar criativos dos públicos
+      const { data: criativosCampanha } = await supabase
+        .from('anuncios')
+        .select('id')
+        .in('conjunto_anuncio_id', publicoIds);
+
+      const criativoIds = criativosCampanha?.map(c => c.id) || [];
+
+      // Buscar métricas de TODOS os níveis: campanha, públicos e criativos
+      const queries = [];
+      
+      // Métricas da própria campanha
+      queries.push(
+        supabase
+          .from('metricas')
+          .select('*')
+          .eq('tipo', 'campanha')
+          .eq('referencia_id', campanhaId)
+          .gte('periodo_inicio', filtroAtual.dataInicio)
+          .lte('periodo_inicio', filtroAtual.dataFim)
+      );
+      
+      // Métricas dos públicos
+      if (publicoIds.length > 0) {
+        queries.push(
+          supabase
+            .from('metricas')
+            .select('*')
+            .eq('tipo', 'publico')
+            .in('referencia_id', publicoIds)
+            .gte('periodo_inicio', filtroAtual.dataInicio)
+            .lte('periodo_inicio', filtroAtual.dataFim)
+        );
+      }
+      
+      // Métricas dos criativos
+      if (criativoIds.length > 0) {
+        queries.push(
+          supabase
+            .from('metricas')
+            .select('*')
+            .eq('tipo', 'criativo')
+            .in('referencia_id', criativoIds)
+            .gte('periodo_inicio', filtroAtual.dataInicio)
+            .lte('periodo_inicio', filtroAtual.dataFim)
+        );
+      }
+
+      // Executar todas as queries em paralelo
+      const results = await Promise.all(queries);
+      
+      // Combinar todos os resultados
+      const metricasArray = results.flatMap(result => result.data || []);
+      const error = results.find(result => result.error)?.error;
+
+      console.log('📊 RESULTADO DA BUSCA (TODOS os níveis):', {
+        total: metricasArray.length,
+        campanha: metricasArray.filter(m => m.tipo === 'campanha').length,
+        publicos: metricasArray.filter(m => m.tipo === 'publico').length,
+        criativos: metricasArray.filter(m => m.tipo === 'criativo').length
+      });
 
       if (error) {
         console.error('Erro ao buscar métricas:', error);
@@ -226,6 +298,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           setMetricasCampanha(metricas);
         }
       }
+      
+      // Marcar que estamos filtrando por campanha
+      setFiltroHierarquico({ tipo: 'campanha', id: campanhaId });
     } catch (error) {
       console.error('Erro ao buscar métricas da campanha:', error);
     } finally {
@@ -241,47 +316,66 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
     console.log('🔍 Buscando métricas gerais:', {
       filtroAtual,
       query: {
-        tipo: 'campanha',
         periodo_inicio_gte: filtroAtual.dataInicio,
-        periodo_fim_lte: filtroAtual.dataFim
+        periodo_inicio_lte: filtroAtual.dataFim
       }
     });
 
     try {
-      // Primeiro, vamos ver TODAS as métricas do banco para entender o que há
-      const { data: todasAsMetricas } = await supabase
-        .from('metricas')
-        .select('referencia_id, periodo_inicio, periodo_fim, investimento, faturamento, leads, vendas')
-        .eq('tipo', 'campanha')
-        .order('periodo_inicio', { ascending: true });
+      // Buscar métricas de TODOS os níveis: funil, campanha, publico, criativo
+      const queries = [
+        // Funis
+        supabase
+          .from('metricas')
+          .select('*')
+          .eq('tipo', 'funil')
+          .gte('periodo_inicio', filtroAtual.dataInicio)
+          .lte('periodo_inicio', filtroAtual.dataFim),
+        
+        // Campanhas
+        supabase
+          .from('metricas')
+          .select('*')
+          .eq('tipo', 'campanha')
+          .gte('periodo_inicio', filtroAtual.dataInicio)
+          .lte('periodo_inicio', filtroAtual.dataFim),
+        
+        // Públicos
+        supabase
+          .from('metricas')
+          .select('*')
+          .eq('tipo', 'publico')
+          .gte('periodo_inicio', filtroAtual.dataInicio)
+          .lte('periodo_inicio', filtroAtual.dataFim),
+        
+        // Criativos
+        supabase
+          .from('metricas')
+          .select('*')
+          .eq('tipo', 'criativo')
+          .gte('periodo_inicio', filtroAtual.dataInicio)
+          .lte('periodo_inicio', filtroAtual.dataFim)
+      ];
 
-      console.log('🗃️ TODAS as métricas no banco:', {
-        total: todasAsMetricas?.length || 0,
-        amostra: todasAsMetricas?.slice(0, 10), // Primeiras 10
-        campanhasUnicas: [...new Set(todasAsMetricas?.map(m => m.referencia_id) || [])],
-        periodosUnicos: [...new Set(todasAsMetricas?.map(m => `${m.periodo_inicio} - ${m.periodo_fim}`) || [])]
-      });
+      // Executar todas as queries em paralelo
+      const results = await Promise.all(queries);
+      
+      // Combinar todos os resultados
+      const metricasArray = results.flatMap(result => result.data || []);
+      const error = results.find(result => result.error)?.error;
 
-      // Buscar todas as métricas de campanhas no período
-      const { data: metricasArray, error } = await supabase
-        .from('metricas')
-        .select('*')
-        .eq('tipo', 'campanha')
-        .gte('periodo_inicio', filtroAtual.dataInicio)
-        .lte('periodo_fim', filtroAtual.dataFim)
-        .order('periodo_inicio', { ascending: true });
-
-      console.log('📊 Métricas encontradas (TODAS as campanhas):', {
-        quantidade: metricasArray?.length || 0,
+      console.log('📊 Métricas encontradas (TODOS os níveis):', {
+        total: metricasArray.length,
+        funil: metricasArray.filter(m => m.tipo === 'funil').length,
+        campanhas: metricasArray.filter(m => m.tipo === 'campanha').length,
+        publicos: metricasArray.filter(m => m.tipo === 'publico').length,
+        criativos: metricasArray.filter(m => m.tipo === 'criativo').length,
         periodo: `${filtroAtual.dataInicio} até ${filtroAtual.dataFim}`,
-        campanhas: [...new Set(metricasArray?.map(m => m.referencia_id) || [])],
-        amostraValores: metricasArray?.slice(0, 5).map(m => ({
-          campanha: m.referencia_id,
-          periodo: `${m.periodo_inicio} - ${m.periodo_fim}`,
-          investimento: m.investimento,
-          faturamento: m.faturamento,
-          leads: m.leads,
-          vendas: m.vendas
+        amostras: metricasArray.slice(0, 3).map(m => ({
+          tipo: m.tipo,
+          periodo_inicio: m.periodo_inicio,
+          periodo_fim: m.periodo_fim,
+          investimento: m.investimento
         }))
       });
 
@@ -309,82 +403,20 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           taxa_conversao: 0
         });
       } else {
-        // NOVA LÓGICA: Agregar por campanha (evitar duplicatas)
+        // Somar TODAS as métricas diretamente (não agrupar por referencia_id)
         const toNumber = (v: any) => (v === null || v === undefined ? 0 : Number(v));
-        
-        // Agrupar métricas por campanha
-        const metricasPorCampanha: { [campanhaId: string]: any[] } = {};
-        
-        (metricasArray as any[]).forEach((m) => {
-          if (!metricasPorCampanha[m.referencia_id]) {
-            metricasPorCampanha[m.referencia_id] = [];
-          }
-          metricasPorCampanha[m.referencia_id].push(m);
-        });
 
-        console.log('📋 Métricas agrupadas por campanha:', {
-          campanhas: Object.keys(metricasPorCampanha),
-          detalhes: Object.entries(metricasPorCampanha).map(([id, metrics]) => ({
-            campanha: id,
-            registros: metrics.length,
-            amostra: metrics[0]
-          }))
-        });
-
-        // Para cada campanha, pegar o registro mais recente ou somar se necessário
-        const metricasFinais: any[] = [];
-        
-        Object.entries(metricasPorCampanha).forEach(([campanhaId, metrics]) => {
-          if (metrics.length === 1) {
-            // Se só tem um registro, usar ele
-            console.log('📊 MÉTRICA ÚNICA DA CAMPANHA:', {
-              campanhaId,
-              investimento: metrics[0].investimento,
-              leads: metrics[0].leads
-            });
-            metricasFinais.push(metrics[0]);
-          } else {
-            // Se tem múltiplos, pegar o mais recente ou somar (dependendo da lógica)
-            // Por enquanto, vamos somar (pode ser métricas de dias diferentes)
-            console.log('📊 AGREGANDO MÚLTIPLAS MÉTRICAS:', {
-              campanhaId,
-              quantidade: metrics.length,
-              investimentos: metrics.map(m => m.investimento)
-            });
-            
-            const metricaAgregada = metrics.reduce((acc, m) => ({
-              ...m, // Manter outras propriedades do primeiro registro
-              alcance: toNumber(acc.alcance) + toNumber(m.alcance),
-              impressoes: toNumber(acc.impressoes) + toNumber(m.impressoes),
-              cliques: toNumber(acc.cliques) + toNumber(m.cliques),
-              visualizacoes_pagina: toNumber(acc.visualizacoes_pagina) + toNumber(m.visualizacoes_pagina),
-              leads: toNumber(acc.leads) + toNumber(m.leads),
-              checkouts: toNumber(acc.checkouts) + toNumber(m.checkouts),
-              vendas: toNumber(acc.vendas) + toNumber(m.vendas),
-              investimento: toNumber(acc.investimento) + toNumber(m.investimento),
-              faturamento: toNumber(acc.faturamento) + toNumber(m.faturamento)
-            }), metrics[0]);
-            
-            console.log('📊 RESULTADO DA AGREGAÇÃO:', {
-              investimento_final: metricaAgregada.investimento,
-              leads_final: metricaAgregada.leads
-            });
-            
-            metricasFinais.push(metricaAgregada);
-          }
-        });
-
-        console.log('🎯 Métricas finais por campanha:', {
-          campanhas: metricasFinais.length,
-          valores: metricasFinais.map(m => ({
-            campanha: m.referencia_id,
+        console.log('📊 Somando todas as métricas diretamente:', {
+          total: metricasArray.length,
+          amostra: metricasArray.slice(0, 3).map(m => ({
+            tipo: m.tipo,
             investimento: m.investimento,
-            faturamento: m.faturamento
+            referencia_id: m.referencia_id?.substring(0, 8)
           }))
         });
 
-        // Agora somar as métricas finais de todas as campanhas
-        const metricas: MetricasAgregadas = metricasFinais.reduce((acc, m) => ({
+        // Somar tudo diretamente
+        const metricas: MetricasAgregadas = (metricasArray as any[]).reduce((acc, m) => ({
           alcance: acc.alcance + toNumber(m.alcance),
           impressoes: acc.impressoes + toNumber(m.impressoes),
           cliques: acc.cliques + toNumber(m.cliques),
@@ -436,6 +468,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
 
         setMetricasGerais(metricas);
       }
+      
+      // Marcar que estamos vendo métricas gerais (sem filtro hierárquico)
+      setFiltroHierarquico(null);
     } catch (error) {
       console.error('Erro ao buscar métricas gerais:', error);
     } finally {
@@ -474,6 +509,10 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
     }
   };
 
+  const limparMetricasCampanha = () => {
+    setMetricasCampanha(null);
+  };
+
   const atualizarFiltroData = (novoFiltro: FiltroData) => {
     setFiltroData(novoFiltro);
     try {
@@ -500,6 +539,514 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
     }
   };
 
+  // Nova função para buscar métricas agregadas de um funil específico
+  const buscarMetricasPorFunil = async (funilId: string, filtro?: FiltroData) => {
+    setLoading(true);
+    const filtroAtual = filtro || filtroData;
+
+    console.log('🔍 BUSCANDO MÉTRICAS DO FUNIL:', {
+      funilId,
+      filtroDataInicio: filtroAtual.dataInicio,
+      filtroDataFim: filtroAtual.dataFim
+    });
+
+    try {
+      console.log('🔍 Buscando métricas do funil:', funilId);
+      
+      // Primeiro, buscar todas as campanhas do funil
+      const { data: campanhasFunil, error: errorCampanhas } = await supabase
+        .from('campanhas')
+        .select('id')
+        .eq('funil_id', funilId);
+
+      if (errorCampanhas) {
+        console.error('Erro ao buscar campanhas do funil:', errorCampanhas);
+        setLoading(false);
+        return;
+      }
+
+      if (!campanhasFunil || campanhasFunil.length === 0) {
+        console.log('⚠️ Nenhuma campanha encontrada para o funil:', funilId);
+        setMetricasGerais({
+          alcance: 0,
+          impressoes: 0,
+          cliques: 0,
+          visualizacoes_pagina: 0,
+          leads: 0,
+          checkouts: 0,
+          vendas: 0,
+          investimento: 0,
+          faturamento: 0,
+          roas: 0,
+          ctr: 0,
+          cpm: 0,
+          cpc: 0,
+          cpl: 0,
+          taxa_conversao: 0
+        });
+        setLoading(false);
+        return;
+      }
+
+      const campanhaIds = campanhasFunil.map(c => c.id);
+      console.log('📋 Campanhas do funil:', campanhaIds);
+
+      // Buscar públicos (conjuntos_anuncio) das campanhas
+      const { data: publicosFunil, error: errorPublicos } = await supabase
+        .from('conjuntos_anuncio')
+        .select('id')
+        .in('campanha_id', campanhaIds);
+
+      const publicoIds = publicosFunil?.map(p => p.id) || [];
+      console.log('📋 Públicos do funil:', publicoIds.length);
+
+      // Buscar criativos (anuncios) dos públicos
+      const { data: criativosFunil, error: errorCriativos } = await supabase
+        .from('anuncios')
+        .select('id')
+        .in('conjunto_anuncio_id', publicoIds);
+
+      const criativoIds = criativosFunil?.map(c => c.id) || [];
+      console.log('📋 Criativos do funil:', criativoIds.length);
+
+      // Buscar métricas de TODOS os níveis: funil, campanhas, públicos e criativos
+      const queries = [];
+      
+      // Métricas do próprio funil
+      queries.push(
+        supabase
+          .from('metricas')
+          .select('*')
+          .eq('tipo', 'funil')
+          .eq('referencia_id', funilId)
+          .gte('periodo_inicio', filtroAtual.dataInicio)
+          .lte('periodo_inicio', filtroAtual.dataFim)
+      );
+      
+      // Métricas das campanhas
+      if (campanhaIds.length > 0) {
+        queries.push(
+          supabase
+            .from('metricas')
+            .select('*')
+            .eq('tipo', 'campanha')
+            .in('referencia_id', campanhaIds)
+            .gte('periodo_inicio', filtroAtual.dataInicio)
+            .lte('periodo_inicio', filtroAtual.dataFim)
+        );
+      }
+      
+      // Métricas dos públicos
+      if (publicoIds.length > 0) {
+        queries.push(
+          supabase
+            .from('metricas')
+            .select('*')
+            .eq('tipo', 'publico')
+            .in('referencia_id', publicoIds)
+            .gte('periodo_inicio', filtroAtual.dataInicio)
+            .lte('periodo_inicio', filtroAtual.dataFim)
+        );
+      }
+      
+      // Métricas dos criativos
+      if (criativoIds.length > 0) {
+        queries.push(
+          supabase
+            .from('metricas')
+            .select('*')
+            .eq('tipo', 'criativo')
+            .in('referencia_id', criativoIds)
+            .gte('periodo_inicio', filtroAtual.dataInicio)
+            .lte('periodo_inicio', filtroAtual.dataFim)
+        );
+      }
+
+      // Executar todas as queries em paralelo
+      const results = await Promise.all(queries);
+      
+      // Combinar todos os resultados
+      const metricasArray = results.flatMap(result => result.data || []);
+      const errorMetricas = results.find(result => result.error)?.error;
+
+      console.log('📊 Métricas encontradas (TODOS os níveis):', {
+        total: metricasArray.length,
+        funil: metricasArray.filter(m => m.tipo === 'funil').length,
+        campanhas: metricasArray.filter(m => m.tipo === 'campanha').length,
+        publicos: metricasArray.filter(m => m.tipo === 'publico').length,
+        criativos: metricasArray.filter(m => m.tipo === 'criativo').length
+      });
+
+      if (errorMetricas) {
+        console.error('Erro ao buscar métricas do funil:', errorMetricas);
+        setLoading(false);
+        return;
+      }
+
+      console.log('📊 Métricas encontradas do funil:', {
+        quantidade: metricasArray?.length || 0,
+        campanhas: [...new Set(metricasArray?.map(m => m.referencia_id) || [])]
+      });
+
+      if (!metricasArray || metricasArray.length === 0) {
+        setMetricasGerais({
+          alcance: 0,
+          impressoes: 0,
+          cliques: 0,
+          visualizacoes_pagina: 0,
+          leads: 0,
+          checkouts: 0,
+          vendas: 0,
+          investimento: 0,
+          faturamento: 0,
+          roas: 0,
+          ctr: 0,
+          cpm: 0,
+          cpc: 0,
+          cpl: 0,
+          taxa_conversao: 0
+        });
+      } else {
+        // Agregar todas as métricas
+        const toNumber = (v: any) => (v === null || v === undefined ? 0 : Number(v));
+        
+        const metricas: MetricasAgregadas = (metricasArray as any[]).reduce((acc, m) => ({
+          alcance: acc.alcance + toNumber(m.alcance),
+          impressoes: acc.impressoes + toNumber(m.impressoes),
+          cliques: acc.cliques + toNumber(m.cliques),
+          visualizacoes_pagina: acc.visualizacoes_pagina + toNumber(m.visualizacoes_pagina),
+          leads: acc.leads + toNumber(m.leads),
+          checkouts: acc.checkouts + toNumber(m.checkouts),
+          vendas: acc.vendas + toNumber(m.vendas),
+          investimento: acc.investimento + toNumber(m.investimento),
+          faturamento: acc.faturamento + toNumber(m.faturamento),
+          roas: 0,
+          ctr: 0,
+          cpm: 0,
+          cpc: 0,
+          cpl: 0,
+          taxa_conversao: 0
+        }), {
+          alcance: 0,
+          impressoes: 0,
+          cliques: 0,
+          visualizacoes_pagina: 0,
+          leads: 0,
+          checkouts: 0,
+          vendas: 0,
+          investimento: 0,
+          faturamento: 0,
+          roas: 0,
+          ctr: 0,
+          cpm: 0,
+          cpc: 0,
+          cpl: 0,
+          taxa_conversao: 0
+        });
+
+        // Recalcular métricas derivadas
+        metricas.roas = metricas.investimento > 0 ? parseFloat((metricas.faturamento / metricas.investimento).toFixed(2)) : 0;
+        metricas.ctr = metricas.impressoes > 0 ? parseFloat(((metricas.cliques / metricas.impressoes) * 100).toFixed(2)) : 0;
+        metricas.cpm = metricas.impressoes > 0 ? parseFloat(((metricas.investimento / metricas.impressoes) * 1000).toFixed(2)) : 0;
+        metricas.cpc = metricas.cliques > 0 ? parseFloat((metricas.investimento / metricas.cliques).toFixed(2)) : 0;
+        metricas.cpl = metricas.leads > 0 ? parseFloat((metricas.investimento / metricas.leads).toFixed(2)) : 0;
+        metricas.taxa_conversao = metricas.leads > 0 ? parseFloat(((metricas.vendas / metricas.leads) * 100).toFixed(2)) : 0;
+
+        console.log('✅ Métricas agregadas do funil:', metricas);
+        setMetricasGerais(metricas);
+      }
+      
+      // Marcar que estamos filtrando por funil
+      setFiltroHierarquico({ tipo: 'funil', id: funilId });
+    } catch (error) {
+      console.error('Erro ao buscar métricas por funil:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Nova função para buscar métricas de um público (conjunto) específico
+  const buscarMetricasPorPublico = async (publicoId: string, filtro?: FiltroData) => {
+    setLoading(true);
+    const filtroAtual = filtro || filtroData;
+
+    try {
+      console.log('🔍 Buscando métricas do público:', publicoId);
+      console.log('📅 Filtro de data:', filtroAtual);
+      
+      // Buscar criativos do público
+      const { data: criativosPublico } = await supabase
+        .from('anuncios')
+        .select('id')
+        .eq('conjunto_anuncio_id', publicoId);
+
+      const criativoIds = criativosPublico?.map(c => c.id) || [];
+      console.log('📋 Criativos do público:', criativoIds.length);
+
+      // Buscar métricas do público E dos criativos
+      const queries = [];
+      
+      // Métricas do próprio público
+      queries.push(
+        supabase
+          .from('metricas')
+          .select('*')
+          .eq('tipo', 'publico')
+          .eq('referencia_id', publicoId)
+          .gte('periodo_inicio', filtroAtual.dataInicio)
+          .lte('periodo_inicio', filtroAtual.dataFim)
+      );
+      
+      // Métricas dos criativos
+      if (criativoIds.length > 0) {
+        queries.push(
+          supabase
+            .from('metricas')
+            .select('*')
+            .eq('tipo', 'criativo')
+            .in('referencia_id', criativoIds)
+            .gte('periodo_inicio', filtroAtual.dataInicio)
+            .lte('periodo_inicio', filtroAtual.dataFim)
+        );
+      }
+
+      // Executar queries em paralelo
+      const results = await Promise.all(queries);
+      const metricasArray = results.flatMap(result => result.data || []);
+      const error = results.find(result => result.error)?.error;
+
+      console.log('📊 Métricas encontradas (TODOS os níveis):', {
+        total: metricasArray.length,
+        publico: metricasArray.filter(m => m.tipo === 'publico').length,
+        criativos: metricasArray.filter(m => m.tipo === 'criativo').length
+      });
+
+      if (error) {
+        console.error('❌ Erro ao buscar métricas do público:', error);
+        setMetricasGerais({
+          alcance: 0,
+          impressoes: 0,
+          cliques: 0,
+          visualizacoes_pagina: 0,
+          leads: 0,
+          checkouts: 0,
+          vendas: 0,
+          investimento: 0,
+          faturamento: 0,
+          roas: 0,
+          ctr: 0,
+          cpm: 0,
+          cpc: 0,
+          cpl: 0,
+          taxa_conversao: 0
+        });
+        setLoading(false);
+        return;
+      }
+
+      if (!metricasArray || metricasArray.length === 0) {
+        console.warn('⚠️ Nenhuma métrica encontrada para o público:', publicoId);
+        console.warn('Execute o script seed_janeiro_2026_PUBLICO.sql para inserir dados');
+        setMetricasGerais({
+          alcance: 0,
+          impressoes: 0,
+          cliques: 0,
+          visualizacoes_pagina: 0,
+          leads: 0,
+          checkouts: 0,
+          vendas: 0,
+          investimento: 0,
+          faturamento: 0,
+          roas: 0,
+          ctr: 0,
+          cpm: 0,
+          cpc: 0,
+          cpl: 0,
+          taxa_conversao: 0
+        });
+      } else {
+        // Agregar métricas
+        const toNumber = (v: any) => (v === null || v === undefined ? 0 : Number(v));
+        
+        const metricas: MetricasAgregadas = (metricasArray as any[]).reduce((acc, m) => ({
+          alcance: acc.alcance + toNumber(m.alcance),
+          impressoes: acc.impressoes + toNumber(m.impressoes),
+          cliques: acc.cliques + toNumber(m.cliques),
+          visualizacoes_pagina: acc.visualizacoes_pagina + toNumber(m.visualizacoes_pagina),
+          leads: acc.leads + toNumber(m.leads),
+          checkouts: acc.checkouts + toNumber(m.checkouts),
+          vendas: acc.vendas + toNumber(m.vendas),
+          investimento: acc.investimento + toNumber(m.investimento),
+          faturamento: acc.faturamento + toNumber(m.faturamento),
+          roas: 0,
+          ctr: 0,
+          cpm: 0,
+          cpc: 0,
+          cpl: 0,
+          taxa_conversao: 0
+        }), {
+          alcance: 0,
+          impressoes: 0,
+          cliques: 0,
+          visualizacoes_pagina: 0,
+          leads: 0,
+          checkouts: 0,
+          vendas: 0,
+          investimento: 0,
+          faturamento: 0,
+          roas: 0,
+          ctr: 0,
+          cpm: 0,
+          cpc: 0,
+          cpl: 0,
+          taxa_conversao: 0
+        });
+
+        // Recalcular métricas derivadas
+        metricas.roas = metricas.investimento > 0 ? parseFloat((metricas.faturamento / metricas.investimento).toFixed(2)) : 0;
+        metricas.ctr = metricas.impressoes > 0 ? parseFloat(((metricas.cliques / metricas.impressoes) * 100).toFixed(2)) : 0;
+        metricas.cpm = metricas.impressoes > 0 ? parseFloat(((metricas.investimento / metricas.impressoes) * 1000).toFixed(2)) : 0;
+        metricas.cpc = metricas.cliques > 0 ? parseFloat((metricas.investimento / metricas.cliques).toFixed(2)) : 0;
+        metricas.cpl = metricas.leads > 0 ? parseFloat((metricas.investimento / metricas.leads).toFixed(2)) : 0;
+        metricas.taxa_conversao = metricas.leads > 0 ? parseFloat(((metricas.vendas / metricas.leads) * 100).toFixed(2)) : 0;
+
+        console.log('✅ Métricas agregadas do público:', metricas);
+        setMetricasGerais(metricas);
+      }
+      
+      // Marcar que estamos filtrando por público
+      setFiltroHierarquico({ tipo: 'publico', id: publicoId });
+    } catch (error) {
+      console.error('Erro ao buscar métricas por público:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Nova função para buscar métricas de um criativo (anúncio) específico
+  const buscarMetricasPorCriativo = async (criativoId: string, filtro?: FiltroData) => {
+    setLoading(true);
+    const filtroAtual = filtro || filtroData;
+
+    try {
+      console.log('🔍 Buscando métricas do criativo:', criativoId);
+      console.log('📅 Filtro de data:', filtroAtual);
+      
+      // Buscar métricas do criativo (tipo='criativo')
+      const { data: metricasArray, error } = await supabase
+        .from('metricas')
+        .select('*')
+        .eq('tipo', 'criativo')
+        .eq('referencia_id', criativoId)
+        .gte('periodo_inicio', filtroAtual.dataInicio)
+        .lte('periodo_inicio', filtroAtual.dataFim)
+        .order('periodo_inicio', { ascending: true });
+
+      console.log('📊 Métricas encontradas do criativo:', {
+        total: metricasArray?.length || 0,
+        criativos: metricasArray?.filter(m => m.tipo === 'criativo').length
+      });
+
+      if (error) {
+        console.error('❌ Erro ao buscar métricas do criativo:', error);
+        setMetricasGerais({
+          alcance: 0,
+          impressoes: 0,
+          cliques: 0,
+          visualizacoes_pagina: 0,
+          leads: 0,
+          checkouts: 0,
+          vendas: 0,
+          investimento: 0,
+          faturamento: 0,
+          roas: 0,
+          ctr: 0,
+          cpm: 0,
+          cpc: 0,
+          cpl: 0,
+          taxa_conversao: 0
+        });
+        setLoading(false);
+        return;
+      }
+
+      if (!metricasArray || metricasArray.length === 0) {
+        setMetricasGerais({
+          alcance: 0,
+          impressoes: 0,
+          cliques: 0,
+          visualizacoes_pagina: 0,
+          leads: 0,
+          checkouts: 0,
+          vendas: 0,
+          investimento: 0,
+          faturamento: 0,
+          roas: 0,
+          ctr: 0,
+          cpm: 0,
+          cpc: 0,
+          cpl: 0,
+          taxa_conversao: 0
+        });
+      } else {
+        // Agregar métricas
+        const toNumber = (v: any) => (v === null || v === undefined ? 0 : Number(v));
+        
+        const metricas: MetricasAgregadas = (metricasArray as any[]).reduce((acc, m) => ({
+          alcance: acc.alcance + toNumber(m.alcance),
+          impressoes: acc.impressoes + toNumber(m.impressoes),
+          cliques: acc.cliques + toNumber(m.cliques),
+          visualizacoes_pagina: acc.visualizacoes_pagina + toNumber(m.visualizacoes_pagina),
+          leads: acc.leads + toNumber(m.leads),
+          checkouts: acc.checkouts + toNumber(m.checkouts),
+          vendas: acc.vendas + toNumber(m.vendas),
+          investimento: acc.investimento + toNumber(m.investimento),
+          faturamento: acc.faturamento + toNumber(m.faturamento),
+          roas: 0,
+          ctr: 0,
+          cpm: 0,
+          cpc: 0,
+          cpl: 0,
+          taxa_conversao: 0
+        }), {
+          alcance: 0,
+          impressoes: 0,
+          cliques: 0,
+          visualizacoes_pagina: 0,
+          leads: 0,
+          checkouts: 0,
+          vendas: 0,
+          investimento: 0,
+          faturamento: 0,
+          roas: 0,
+          ctr: 0,
+          cpm: 0,
+          cpc: 0,
+          cpl: 0,
+          taxa_conversao: 0
+        });
+
+        // Recalcular métricas derivadas
+        metricas.roas = metricas.investimento > 0 ? parseFloat((metricas.faturamento / metricas.investimento).toFixed(2)) : 0;
+        metricas.ctr = metricas.impressoes > 0 ? parseFloat(((metricas.cliques / metricas.impressoes) * 100).toFixed(2)) : 0;
+        metricas.cpm = metricas.impressoes > 0 ? parseFloat(((metricas.investimento / metricas.impressoes) * 1000).toFixed(2)) : 0;
+        metricas.cpc = metricas.cliques > 0 ? parseFloat((metricas.investimento / metricas.cliques).toFixed(2)) : 0;
+        metricas.cpl = metricas.leads > 0 ? parseFloat((metricas.investimento / metricas.leads).toFixed(2)) : 0;
+        metricas.taxa_conversao = metricas.leads > 0 ? parseFloat(((metricas.vendas / metricas.leads) * 100).toFixed(2)) : 0;
+
+        console.log('✅ Métricas agregadas do criativo:', metricas);
+        setMetricasGerais(metricas);
+      }
+      
+      // Marcar que estamos filtrando por criativo
+      setFiltroHierarquico({ tipo: 'criativo', id: criativoId });
+    } catch (error) {
+      console.error('Erro ao buscar métricas por criativo:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <CampanhaContext.Provider
       value={{
@@ -508,10 +1055,15 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
         metricasGerais,
         loading,
         filtroData,
+        filtroHierarquico,
         selecionarCampanha,
         limparSelecao,
+        limparMetricasCampanha,
         atualizarFiltroData,
         recarregarMetricas,
+        buscarMetricasPorFunil,
+        buscarMetricasPorPublico,
+        buscarMetricasPorCriativo,
       }}
     >
       {children}

@@ -1,26 +1,134 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
+import { Loader2 } from 'lucide-react'
 
 interface Campanha {
   id: string
   nome: string
   plataforma: string
+  tipo: string
+  objetivo: string
+  ativo: boolean
+  created_at: string
+}
+
+interface CampanhaComMetricas extends Campanha {
   investido: number
   leads: number
   ctr: number
   conversao: number
-  ativa: boolean
 }
 
 interface FuturisticCampanhasTableProps {
-  campanhas: Campanha[]
+  dataInicio?: string
+  dataFim?: string
 }
 
-export function FuturisticCampanhasTable({ campanhas }: FuturisticCampanhasTableProps) {
+export function FuturisticCampanhasTable({ dataInicio, dataFim }: FuturisticCampanhasTableProps) {
+  const [campanhas, setCampanhas] = useState<CampanhaComMetricas[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    carregarCampanhas()
+  }, [dataInicio, dataFim])
+
+  const carregarCampanhas = async () => {
+    try {
+      setLoading(true)
+      
+      // Buscar todas as campanhas
+      const { data: campanhasData, error: errorCampanhas } = await supabase
+        .from('campanhas')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (errorCampanhas) {
+        console.error('Erro ao carregar campanhas:', errorCampanhas)
+        return
+      }
+
+      if (!campanhasData || campanhasData.length === 0) {
+        setCampanhas([])
+        return
+      }
+
+      // Buscar métricas para cada campanha
+      const campanhasComMetricas = await Promise.all(
+        campanhasData.map(async (campanha) => {
+          let query = supabase
+            .from('metricas')
+            .select('*')
+            .eq('tipo', 'campanha')
+            .eq('referencia_id', campanha.id)
+
+          if (dataInicio) {
+            query = query.gte('periodo_inicio', dataInicio)
+          }
+          if (dataFim) {
+            query = query.lte('periodo_inicio', dataFim)
+          }
+
+          const { data: metricas } = await query
+
+          // Agregar métricas
+          const totais = metricas?.reduce(
+            (acc, m) => ({
+              investido: acc.investido + (m.investimento || 0),
+              leads: acc.leads + (m.leads || 0),
+              impressoes: acc.impressoes + (m.impressoes || 0),
+              cliques: acc.cliques + (m.cliques || 0),
+            }),
+            { investido: 0, leads: 0, impressoes: 0, cliques: 0 }
+          ) || { investido: 0, leads: 0, impressoes: 0, cliques: 0 }
+
+          const ctr = totais.impressoes > 0 ? (totais.cliques / totais.impressoes) * 100 : 0
+          const conversao = totais.cliques > 0 ? (totais.leads / totais.cliques) * 100 : 0
+
+          return {
+            ...campanha,
+            investido: totais.investido,
+            leads: totais.leads,
+            ctr,
+            conversao,
+          }
+        })
+      )
+
+      setCampanhas(campanhasComMetricas)
+    } catch (error) {
+      console.error('Erro ao carregar campanhas:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const toggleCampanha = async (id: string, novoStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('campanhas')
+        .update({ ativo: novoStatus })
+        .eq('id', id)
+
+      if (error) {
+        console.error('Erro ao atualizar campanha:', error)
+        return
+      }
+
+      // Atualizar estado local
+      setCampanhas((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, ativo: novoStatus } : c))
+      )
+    } catch (error) {
+      console.error('Erro ao atualizar campanha:', error)
+    }
+  }
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -39,18 +147,64 @@ export function FuturisticCampanhasTable({ campanhas }: FuturisticCampanhasTable
   }
 
   const getPlataformaIcon = (plataforma: string) => {
-    switch (plataforma.toLowerCase()) {
+    switch (plataforma?.toLowerCase()) {
       case 'meta ads':
+      case 'meta':
+      case 'facebook':
         return '📘'
       case 'google ads':
+      case 'google':
         return '🔍'
       case 'linkedin ads':
+      case 'linkedin':
         return '💼'
       case 'tiktok ads':
+      case 'tiktok':
         return '🎵'
       default:
         return '📊'
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="group relative">
+        <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-20 blur-sm rounded-2xl" />
+        <Card className="relative border-0 bg-gradient-to-br from-slate-900/90 to-slate-800/90 backdrop-blur-xl border border-slate-700/50">
+          <CardContent className="p-12">
+            <div className="flex items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
+              <span className="ml-3 text-slate-400">Carregando campanhas...</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (campanhas.length === 0) {
+    return (
+      <div className="group relative">
+        <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-20 blur-sm rounded-2xl" />
+        <Card className="relative border-0 bg-gradient-to-br from-slate-900/90 to-slate-800/90 backdrop-blur-xl border border-slate-700/50">
+          <CardHeader className="bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10 border-b border-slate-700/50">
+            <CardTitle className="text-white font-bold flex items-center space-x-2">
+              <div className="flex space-x-1">
+                <div className="w-2 h-2 bg-indigo-400 rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse animation-delay-200"></div>
+                <div className="w-2 h-2 bg-pink-400 rounded-full animate-pulse animation-delay-400"></div>
+              </div>
+              <span>Campanhas Ativas</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-12">
+            <div className="text-center text-slate-400">
+              <p>Nenhuma campanha cadastrada</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -98,14 +252,14 @@ export function FuturisticCampanhasTable({ campanhas }: FuturisticCampanhasTable
                       <div className="flex items-center space-x-3">
                         <div className={cn(
                           "w-3 h-3 rounded-full",
-                          campanha.ativa ? "bg-green-400 animate-pulse" : "bg-gray-500"
+                          campanha.ativo ? "bg-green-400 animate-pulse" : "bg-gray-500"
                         )} />
                         <div>
                           <div className="font-semibold text-white group-hover/row:text-blue-300 transition-colors">
                             {campanha.nome}
                           </div>
                           <div className="text-xs text-slate-400">
-                            ID: {campanha.id.slice(0, 8)}
+                            {campanha.objetivo || campanha.tipo}
                           </div>
                         </div>
                       </div>
@@ -154,17 +308,24 @@ export function FuturisticCampanhasTable({ campanhas }: FuturisticCampanhasTable
                     </TableCell>
                     
                     <TableCell className="text-center">
-                      <Badge 
-                        variant={campanha.ativa ? 'default' : 'secondary'}
-                        className={cn(
-                          "font-semibold",
-                          campanha.ativa 
-                            ? "bg-gradient-to-r from-emerald-500 to-green-400 text-white shadow-lg shadow-green-500/20" 
-                            : "bg-slate-600 text-slate-300"
-                        )}
-                      >
-                        {campanha.ativa ? '🟢 Ativa' : '⏸️ Pausada'}
-                      </Badge>
+                      <div className="flex items-center justify-center space-x-2">
+                        <Switch
+                          checked={campanha.ativo}
+                          onCheckedChange={(checked) => toggleCampanha(campanha.id, checked)}
+                          className="data-[state=checked]:bg-emerald-500"
+                        />
+                        <Badge 
+                          variant={campanha.ativo ? 'default' : 'secondary'}
+                          className={cn(
+                            "font-semibold text-xs",
+                            campanha.ativo 
+                              ? "bg-gradient-to-r from-emerald-500 to-green-400 text-white shadow-lg shadow-green-500/20" 
+                              : "bg-slate-600 text-slate-300"
+                          )}
+                        >
+                          {campanha.ativo ? '🟢 Ativa' : '⏸️ Pausada'}
+                        </Badge>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

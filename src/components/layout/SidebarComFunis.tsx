@@ -94,10 +94,18 @@ export function SidebarComFunis({ empresaNome }: SidebarProps) {
         .order('created_at', { ascending: false });
 
       if (errorFunis) {
-        console.error('Erro ao carregar funis:', errorFunis);
-        toast.error('Erro ao carregar funis');
+        console.error('❌ Erro ao carregar funis:', {
+          error: errorFunis,
+          message: errorFunis?.message,
+          details: errorFunis?.details,
+          hint: errorFunis?.hint,
+          code: errorFunis?.code
+        });
+        toast.error(`Erro ao carregar funis: ${errorFunis?.message || 'Erro desconhecido'}`);
         return;
       }
+
+      console.log('✅ Funis carregados:', funis?.length || 0);
 
       // Carregar campanhas dos funis
       const { data: campanhas, error: errorCampanhas } = await supabase
@@ -107,7 +115,15 @@ export function SidebarComFunis({ empresaNome }: SidebarProps) {
         .order('created_at', { ascending: false });
 
       if (errorCampanhas) {
-        console.error('Erro ao carregar campanhas:', errorCampanhas);
+        console.error('❌ Erro ao carregar campanhas:', {
+          error: errorCampanhas,
+          message: errorCampanhas?.message,
+          details: errorCampanhas?.details,
+          hint: errorCampanhas?.hint,
+          code: errorCampanhas?.code
+        });
+      } else {
+        console.log('✅ Campanhas carregadas:', campanhas?.length || 0);
       }
 
       // Agrupar campanhas por funil

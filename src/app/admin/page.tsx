@@ -43,7 +43,8 @@ import {
   ChevronDown,
   ChevronRight,
   Sparkles,
-  Palette
+  Palette,
+  Copy
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
@@ -149,6 +150,12 @@ export default function PainelAdmin() {
   const [modalCampanhaAberto, setModalCampanhaAberto] = useState(false);
   const [modalConjuntoAberto, setModalConjuntoAberto] = useState(false);
   const [modalAnuncioAberto, setModalAnuncioAberto] = useState(false);
+  const [modalEditarFunilAberto, setModalEditarFunilAberto] = useState(false);
+  const [modalEditarCampanhaAberto, setModalEditarCampanhaAberto] = useState(false);
+  const [modalEditarConjuntoAberto, setModalEditarConjuntoAberto] = useState(false);
+  const [funilEditando, setFunilEditando] = useState<Funil | null>(null);
+  const [campanhaEditando, setCampanhaEditando] = useState<Campanha | null>(null);
+  const [conjuntoEditando, setConjuntoEditando] = useState<ConjuntoAnuncio | null>(null);
 
   // Form states
   const [novoUsuario, setNovoUsuario] = useState({
@@ -707,6 +714,271 @@ export default function PainelAdmin() {
     }
   };
 
+  // ============= FUNÇÕES DE EDIÇÃO =============
+  const handleEditarFunil = (funil: Funil) => {
+    setFunilEditando(funil);
+    setModalEditarFunilAberto(true);
+  };
+
+  const handleSalvarEdicaoFunil = async () => {
+    if (!funilEditando) return;
+
+    if (!funilEditando.nome) {
+      toast.error('Nome do funil é obrigatório');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('funis')
+        .update({
+          nome: funilEditando.nome,
+          descricao: funilEditando.descricao
+        })
+        .eq('id', funilEditando.id);
+
+      if (error) throw error;
+
+      toast.success('Funil atualizado com sucesso!');
+      setModalEditarFunilAberto(false);
+      setFunilEditando(null);
+      carregarFunis();
+    } catch (error: any) {
+      console.error('Erro ao atualizar funil:', error);
+      toast.error('Erro ao atualizar funil');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditarCampanha = (campanha: Campanha) => {
+    setCampanhaEditando(campanha);
+    setModalEditarCampanhaAberto(true);
+  };
+
+  const handleSalvarEdicaoCampanha = async () => {
+    if (!campanhaEditando) return;
+
+    if (!campanhaEditando.nome) {
+      toast.error('Nome da campanha é obrigatório');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('campanhas')
+        .update({
+          nome: campanhaEditando.nome,
+          tipo: campanhaEditando.tipo,
+          plataforma: campanhaEditando.plataforma,
+          ativo: campanhaEditando.ativo
+        })
+        .eq('id', campanhaEditando.id);
+
+      if (error) throw error;
+
+      toast.success('Campanha atualizada com sucesso!');
+      setModalEditarCampanhaAberto(false);
+      setCampanhaEditando(null);
+      carregarFunis();
+    } catch (error: any) {
+      console.error('Erro ao atualizar campanha:', error);
+      toast.error('Erro ao atualizar campanha');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditarConjunto = (conjunto: ConjuntoAnuncio) => {
+    setConjuntoEditando(conjunto);
+    setModalEditarConjuntoAberto(true);
+  };
+
+  const handleSalvarEdicaoConjunto = async () => {
+    if (!conjuntoEditando) return;
+
+    if (!conjuntoEditando.nome) {
+      toast.error('Nome do conjunto é obrigatório');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('conjuntos_anuncio')
+        .update({
+          nome: conjuntoEditando.nome,
+          ativo: conjuntoEditando.ativo
+        })
+        .eq('id', conjuntoEditando.id);
+
+      if (error) throw error;
+
+      toast.success('Conjunto atualizado com sucesso!');
+      setModalEditarConjuntoAberto(false);
+      setConjuntoEditando(null);
+      carregarFunis();
+    } catch (error: any) {
+      console.error('Erro ao atualizar conjunto:', error);
+      toast.error('Erro ao atualizar conjunto');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ============= FUNÇÃO DE DUPLICAR CONJUNTO =============
+  const handleDuplicarConjunto = async (conjunto: ConjuntoAnuncio) => {
+    setLoading(true);
+    try {
+      // Criar cópia do conjunto
+      const { data: novoConjuntoData, error: conjuntoError } = await supabase
+        .from('conjuntos_anuncio')
+        .insert({
+          nome: `${conjunto.nome} (Cópia)`,
+          campanha_id: conjunto.campanha_id,
+          ativo: conjunto.ativo
+        })
+        .select()
+        .single();
+
+      if (conjuntoError) throw conjuntoError;
+
+      // Se o conjunto tem anúncios, duplicá-los também
+      if (conjunto.anuncios && conjunto.anuncios.length > 0) {
+        const anunciosDuplicados = conjunto.anuncios.map(anuncio => ({
+          nome: anuncio.nome,
+          tipo: anuncio.tipo,
+          conjunto_anuncio_id: novoConjuntoData.id
+        }));
+
+        const { error: anunciosError } = await supabase
+          .from('anuncios')
+          .insert(anunciosDuplicados);
+
+        if (anunciosError) throw anunciosError;
+      }
+
+      toast.success('Conjunto duplicado com sucesso!');
+      carregarFunis();
+    } catch (error: any) {
+      console.error('Erro ao duplicar conjunto:', error);
+      toast.error('Erro ao duplicar conjunto');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ============= FUNÇÕES DE EXCLUSÃO =============
+  const handleExcluirFunil = async (funilId: string, funilNome: string) => {
+    if (!confirm(`Deseja realmente excluir o funil "${funilNome}"? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('funis')
+        .delete()
+        .eq('id', funilId);
+
+      if (error) throw error;
+
+      toast.success('Funil excluído com sucesso!');
+      carregarFunis();
+    } catch (error: any) {
+      console.error('Erro ao excluir funil:', error);
+      if (error.code === '23503') {
+        toast.error('Não é possível excluir este funil pois ele possui campanhas vinculadas');
+      } else {
+        toast.error('Erro ao excluir funil');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExcluirCampanha = async (campanhaId: string, campanhaNome: string) => {
+    if (!confirm(`Deseja realmente excluir a campanha "${campanhaNome}"? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('campanhas')
+        .delete()
+        .eq('id', campanhaId);
+
+      if (error) throw error;
+
+      toast.success('Campanha excluída com sucesso!');
+      carregarFunis();
+    } catch (error: any) {
+      console.error('Erro ao excluir campanha:', error);
+      if (error.code === '23503') {
+        toast.error('Não é possível excluir esta campanha pois ela possui conjuntos vinculados');
+      } else {
+        toast.error('Erro ao excluir campanha');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExcluirConjunto = async (conjuntoId: string, conjuntoNome: string) => {
+    if (!confirm(`Deseja realmente excluir o conjunto "${conjuntoNome}"? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('conjuntos_anuncio')
+        .delete()
+        .eq('id', conjuntoId);
+
+      if (error) throw error;
+
+      toast.success('Conjunto excluído com sucesso!');
+      carregarFunis();
+    } catch (error: any) {
+      console.error('Erro ao excluir conjunto:', error);
+      if (error.code === '23503') {
+        toast.error('Não é possível excluir este conjunto pois ele possui anúncios vinculados');
+      } else {
+        toast.error('Erro ao excluir conjunto');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExcluirAnuncio = async (anuncioId: string, anuncioNome: string) => {
+    if (!confirm(`Deseja realmente excluir o anúncio "${anuncioNome}"?`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('anuncios')
+        .delete()
+        .eq('id', anuncioId);
+
+      if (error) throw error;
+
+      toast.success('Anúncio excluído com sucesso!');
+      carregarFunis();
+    } catch (error: any) {
+      console.error('Erro ao excluir anúncio:', error);
+      toast.error('Erro ao excluir anúncio');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <LayoutComFunis>
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
@@ -984,7 +1256,11 @@ export default function PainelAdmin() {
                                   size="sm" 
                                   variant="ghost" 
                                   className="text-gray-400 hover:text-white"
-                                  onClick={(e) => e.stopPropagation()}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEditarFunil(funil);
+                                  }}
+                                  title="Editar funil"
                                 >
                                   <Edit className="h-4 w-4" />
                                 </Button>
@@ -992,7 +1268,11 @@ export default function PainelAdmin() {
                                   size="sm" 
                                   variant="ghost" 
                                   className="text-red-400 hover:text-red-300"
-                                  onClick={(e) => e.stopPropagation()}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleExcluirFunil(funil.id, funil.nome);
+                                  }}
+                                  title="Excluir funil"
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -1048,7 +1328,11 @@ export default function PainelAdmin() {
                                             size="sm" 
                                             variant="ghost" 
                                             className="h-6 w-6 p-0 text-gray-400 hover:text-white"
-                                            onClick={(e) => e.stopPropagation()}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleEditarCampanha(campanha);
+                                            }}
+                                            title="Editar campanha"
                                           >
                                             <Edit className="h-3 w-3" />
                                           </Button>
@@ -1056,7 +1340,11 @@ export default function PainelAdmin() {
                                             size="sm" 
                                             variant="ghost" 
                                             className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
-                                            onClick={(e) => e.stopPropagation()}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleExcluirCampanha(campanha.id, campanha.nome);
+                                            }}
+                                            title="Excluir campanha"
                                           >
                                             <Trash2 className="h-3 w-3" />
                                           </Button>
@@ -1114,8 +1402,24 @@ export default function PainelAdmin() {
                                                     <Button 
                                                       size="sm" 
                                                       variant="ghost" 
+                                                      className="h-5 w-5 p-0 text-blue-400 hover:text-blue-300"
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDuplicarConjunto(conjunto);
+                                                      }}
+                                                      title="Duplicar conjunto"
+                                                    >
+                                                      <Copy className="h-2.5 w-2.5" />
+                                                    </Button>
+                                                    <Button 
+                                                      size="sm" 
+                                                      variant="ghost" 
                                                       className="h-5 w-5 p-0 text-gray-400 hover:text-white"
-                                                      onClick={(e) => e.stopPropagation()}
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleEditarConjunto(conjunto);
+                                                      }}
+                                                      title="Editar conjunto"
                                                     >
                                                       <Edit className="h-2.5 w-2.5" />
                                                     </Button>
@@ -1123,7 +1427,11 @@ export default function PainelAdmin() {
                                                       size="sm" 
                                                       variant="ghost" 
                                                       className="h-5 w-5 p-0 text-red-400 hover:text-red-300"
-                                                      onClick={(e) => e.stopPropagation()}
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleExcluirConjunto(conjunto.id, conjunto.nome);
+                                                      }}
+                                                      title="Excluir conjunto"
                                                     >
                                                       <Trash2 className="h-2.5 w-2.5" />
                                                     </Button>
@@ -1162,7 +1470,11 @@ export default function PainelAdmin() {
                                                             size="sm" 
                                                             variant="ghost" 
                                                             className="h-4 w-4 p-0 text-red-400 hover:text-red-300"
-                                                            onClick={(e) => e.stopPropagation()}
+                                                            onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              handleExcluirAnuncio(anuncio.id, anuncio.nome);
+                                                            }}
+                                                            title="Excluir anúncio"
                                                           >
                                                             <Trash2 className="h-2 w-2" />
                                                           </Button>
@@ -2009,6 +2321,189 @@ export default function PainelAdmin() {
                 onClick={() => handleSalvarEdicao()}
                 disabled={loading}
                 className="flex-1 bg-purple-600 hover:bg-purple-700"
+              >
+                {loading ? 'Salvando...' : 'Salvar Alterações'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Edição de Funil */}
+      <Dialog open={modalEditarFunilAberto} onOpenChange={setModalEditarFunilAberto}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-cyan-400">
+              Editar Funil
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit-nome-funil" className="text-gray-300">Nome do Funil</Label>
+              <Input
+                id="edit-nome-funil"
+                value={funilEditando?.nome || ''}
+                onChange={(e) => setFunilEditando(prev => prev ? {...prev, nome: e.target.value} : null)}
+                placeholder="Ex: Funil de Vendas"
+                className="bg-gray-800 border-gray-600 text-white mt-2"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-descricao-funil" className="text-gray-300">Descrição (opcional)</Label>
+              <Input
+                id="edit-descricao-funil"
+                value={funilEditando?.descricao || ''}
+                onChange={(e) => setFunilEditando(prev => prev ? {...prev, descricao: e.target.value} : null)}
+                placeholder="Breve descrição do funil"
+                className="bg-gray-800 border-gray-600 text-white mt-2"
+              />
+            </div>
+            <div className="flex gap-3 pt-4">
+              <Button
+                onClick={() => {
+                  setModalEditarFunilAberto(false);
+                  setFunilEditando(null);
+                }}
+                variant="outline"
+                className="flex-1 border-gray-600"
+                disabled={loading}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleSalvarEdicaoFunil}
+                disabled={loading}
+                className="flex-1 bg-cyan-600 hover:bg-cyan-700"
+              >
+                {loading ? 'Salvando...' : 'Salvar Alterações'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Edição de Campanha */}
+      <Dialog open={modalEditarCampanhaAberto} onOpenChange={setModalEditarCampanhaAberto}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-blue-400">
+              Editar Campanha
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit-nome-campanha" className="text-gray-300">Nome da Campanha</Label>
+              <Input
+                id="edit-nome-campanha"
+                value={campanhaEditando?.nome || ''}
+                onChange={(e) => setCampanhaEditando(prev => prev ? {...prev, nome: e.target.value} : null)}
+                placeholder="Ex: Campanha Black Friday"
+                className="bg-gray-800 border-gray-600 text-white mt-2"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-tipo-campanha" className="text-gray-300">Tipo (opcional)</Label>
+              <Input
+                id="edit-tipo-campanha"
+                value={campanhaEditando?.tipo || ''}
+                onChange={(e) => setCampanhaEditando(prev => prev ? {...prev, tipo: e.target.value} : null)}
+                placeholder="Ex: Conversão, Tráfego"
+                className="bg-gray-800 border-gray-600 text-white mt-2"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-plataforma-campanha" className="text-gray-300">Plataforma (opcional)</Label>
+              <Input
+                id="edit-plataforma-campanha"
+                value={campanhaEditando?.plataforma || ''}
+                onChange={(e) => setCampanhaEditando(prev => prev ? {...prev, plataforma: e.target.value} : null)}
+                placeholder="Ex: Facebook, Google"
+                className="bg-gray-800 border-gray-600 text-white mt-2"
+              />
+            </div>
+            <div className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg">
+              <input
+                type="checkbox"
+                id="ativo-campanha-edit"
+                checked={campanhaEditando?.ativo || false}
+                onChange={(e) => setCampanhaEditando(prev => prev ? {...prev, ativo: e.target.checked} : null)}
+                className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+              />
+              <label htmlFor="ativo-campanha-edit" className="text-sm font-medium cursor-pointer">
+                Campanha Ativa
+              </label>
+            </div>
+            <div className="flex gap-3 pt-4">
+              <Button
+                onClick={() => {
+                  setModalEditarCampanhaAberto(false);
+                  setCampanhaEditando(null);
+                }}
+                variant="outline"
+                className="flex-1 border-gray-600"
+                disabled={loading}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleSalvarEdicaoCampanha}
+                disabled={loading}
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+              >
+                {loading ? 'Salvando...' : 'Salvar Alterações'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Edição de Conjunto */}
+      <Dialog open={modalEditarConjuntoAberto} onOpenChange={setModalEditarConjuntoAberto}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-bold text-green-400">
+              Editar Conjunto de Anúncio
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit-nome-conjunto" className="text-gray-300">Nome do Conjunto</Label>
+              <Input
+                id="edit-nome-conjunto"
+                value={conjuntoEditando?.nome || ''}
+                onChange={(e) => setConjuntoEditando(prev => prev ? {...prev, nome: e.target.value} : null)}
+                placeholder="Ex: Público Quente"
+                className="bg-gray-800 border-gray-600 text-white mt-2"
+              />
+            </div>
+            <div className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg">
+              <input
+                type="checkbox"
+                id="ativo-conjunto-edit"
+                checked={conjuntoEditando?.ativo || false}
+                onChange={(e) => setConjuntoEditando(prev => prev ? {...prev, ativo: e.target.checked} : null)}
+                className="w-4 h-4 text-green-600 bg-gray-700 border-gray-600 rounded focus:ring-green-500"
+              />
+              <label htmlFor="ativo-conjunto-edit" className="text-sm font-medium cursor-pointer">
+                Conjunto Ativo
+              </label>
+            </div>
+            <div className="flex gap-3 pt-4">
+              <Button
+                onClick={() => {
+                  setModalEditarConjuntoAberto(false);
+                  setConjuntoEditando(null);
+                }}
+                variant="outline"
+                className="flex-1 border-gray-600"
+                disabled={loading}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleSalvarEdicaoConjunto}
+                disabled={loading}
+                className="flex-1 bg-green-600 hover:bg-green-700"
               >
                 {loading ? 'Salvando...' : 'Salvar Alterações'}
               </Button>

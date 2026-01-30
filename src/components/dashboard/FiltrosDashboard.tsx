@@ -142,108 +142,77 @@ export default function FiltrosDashboard({ onFiltroChange, filtroAtual, campanha
   }, [filtroAtual]);
 
   return (
-    <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-700/50 rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-4">
-        <Filter className="h-4 w-4 text-cyan-400" />
-        <h3 className="text-sm font-semibold text-white">Filtros de Período</h3>
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5 mb-2">
+        <Calendar className="h-3.5 w-3.5 text-cyan-400" />
+        <h3 className="text-xs font-semibold text-slate-300">Período</h3>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Botões de período pré-definido */}
-        <div className="flex flex-wrap gap-2">
+      <div className="flex flex-col gap-2">
+        {/* Botões de período pré-definido - Compactos */}
+        <div className="flex flex-wrap gap-1.5">
           {[
             { valor: 'hoje', label: 'Hoje' },
             { valor: 'ontem', label: 'Ontem' },
-            { valor: 'semana', label: 'Esta Semana' },
-            { valor: 'mes', label: 'Este Mês' },
-            { valor: 'mes-passado', label: 'Mês Passado' },
-            { valor: 'trimestre', label: 'Últimos 3 Meses' },
-            { valor: 'ano', label: 'Este Ano' },
+            { valor: 'semana', label: 'Semana' },
+            { valor: 'mes', label: 'Mês' },
+            { valor: 'trimestre', label: '3M' },
           ].map((opcao) => (
             <Button
               key={opcao.valor}
               variant="ghost"
               size="sm"
               className={cn(
-                "text-xs border transition-all duration-200",
+                "text-xs px-2 py-1 h-7 border transition-all duration-200",
                 filtroAtual.tipo === opcao.valor
-                  ? "bg-gradient-to-r from-cyan-500/20 to-blue-500/20 text-cyan-300 border-cyan-500/30"
-                  : "border-slate-600 text-slate-300 hover:border-slate-500 hover:text-white"
+                  ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
+                  : "border-slate-600 text-slate-400 hover:border-slate-500 hover:text-white"
               )}
               onClick={() => handleTipoChange(opcao.valor as FiltroData['tipo'])}
             >
               {opcao.label}
             </Button>
           ))}
+          
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "text-xs px-2 py-1 h-7 border transition-all duration-200",
+              filtroAtual.tipo === 'personalizado'
+                ? "bg-purple-500/20 text-purple-300 border-purple-500/40"
+                : "border-slate-600 text-slate-400 hover:border-slate-500 hover:text-white"
+            )}
+            onClick={() => handleTipoChange('personalizado')}
+          >
+            Custom
+          </Button>
         </div>
 
-        {/* Botão período personalizado */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn(
-            "text-xs border transition-all duration-200",
-            filtroAtual.tipo === 'personalizado'
-              ? "bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-300 border-purple-500/30"
-              : "border-slate-600 text-slate-300 hover:border-slate-500 hover:text-white"
-          )}
-          onClick={() => handleTipoChange('personalizado')}
-        >
-          <Calendar className="h-3 w-3 mr-1" />
-          Personalizado
-        </Button>
-
-        {/* Botão resetar */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-xs border border-red-500/30 text-red-400 hover:bg-red-500/10"
-          onClick={resetarFiltro}
-        >
-          <RotateCcw className="h-3 w-3 mr-1" />
-          Resetar
-        </Button>
-      </div>
-
-      {/* Campos de data personalizada */}
-      {showCustom && (
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label htmlFor="dataInicio" className="text-xs text-slate-300">
-              Data Início
-            </Label>
+        {/* Campos de data personalizada - Inline */}
+        {showCustom && (
+          <div className="flex gap-2">
             <Input
-              id="dataInicio"
               type="date"
               value={dataInicio}
               onChange={(e) => setDataInicio(e.target.value)}
               onBlur={handleCustomDateChange}
-              className="bg-slate-800 border-slate-600 text-white text-xs"
+              className="bg-slate-800 border-slate-600 text-white text-xs h-7 px-2"
             />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="dataFim" className="text-xs text-slate-300">
-              Data Fim
-            </Label>
             <Input
-              id="dataFim"
               type="date"
               value={dataFim}
               onChange={(e) => setDataFim(e.target.value)}
               onBlur={handleCustomDateChange}
-              className="bg-slate-800 border-slate-600 text-white text-xs"
+              className="bg-slate-800 border-slate-600 text-white text-xs h-7 px-2"
             />
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Informação do período atual */}
-      <div className="mt-3 flex items-center justify-between">
-        <div className="text-xs text-slate-400">
-          Período: {filtroAtual.dataInicio.split('-').reverse().join('/')} até {filtroAtual.dataFim.split('-').reverse().join('/')}
+        {/* Info do período - Minimalista */}
+        <div className="text-[10px] text-slate-500">
+          {filtroAtual.dataInicio.split('-').reverse().join('/')} → {filtroAtual.dataFim.split('-').reverse().join('/')}
         </div>
-        
-        {/* Botão Editar Métricas removido — não renderizar na barra de período */}
       </div>
     </div>
   );

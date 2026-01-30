@@ -8,6 +8,7 @@ import { FuturisticCharts } from '@/components/dashboard/FuturisticCharts';
 import FiltrosDashboard from '@/components/dashboard/FiltrosDashboard';
 import { FunilConversao } from '@/components/dashboard/FunilConversao';
 import { FiltrosCascata } from '@/components/dashboard/FiltrosCascata';
+import { InsightsCards } from '@/components/dashboard/InsightsCards';
 import { supabase } from '@/lib/supabase';
 import ModalEditarMetricas from '@/components/modals/ModalEditarMetricas';
 
@@ -52,6 +53,7 @@ function DashboardTabs() {
             if (detalhe) {
               totais.comecou_diagnostico += detalhe.comecou_diagnostico || 0;
               totais.chegaram_crm_kommo += detalhe.chegaram_crm_kommo || 0;
+              // Corrigido: usar 'qualificados_para_mentoria' que é o nome correto salvo no banco
               totais.qualificados_mentoria += detalhe.qualificados_para_mentoria || 0;
               totais.para_downsell += detalhe.para_downsell || 0;
               totais.agendados_diagnostico += detalhe.agendados_diagnostico || 0;
@@ -262,7 +264,7 @@ interface FilterState {
 }
 
 export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditButton = false, hideFinanceFields = false, department }: { defaultTitle?: string; showEditButton?: boolean; hideFinanceFields?: boolean; department?: string }) {
-  const { campanhaAtiva, metricasCampanha, metricasGerais, loading, filtroData, atualizarFiltroData, recarregarMetricas, selecionarCampanha } = useCampanhaContext();
+  const { campanhaAtiva, metricasCampanha, metricasGerais, loading, filtroData, atualizarFiltroData, recarregarMetricas, selecionarCampanha, buscarMetricasPorFunil, buscarMetricasPorPublico, buscarMetricasPorCriativo, limparMetricasCampanha } = useCampanhaContext();
   const [modalEditarAberto, setModalEditarAberto] = useState(false);
   const [reloadTrigger, setReloadTrigger] = useState(0);
   
@@ -301,14 +303,35 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
     console.log('🔍 Filtros aplicados:', filters);
     
     // Mostrar feedback visual de que os filtros foram aplicados
-    if (filters.campanha) {
+    if (filters.criativo) {
+      console.log('🎨 Criativo selecionado:', filters.criativo.name);
+      // Limpar métricas de campanha antes de buscar novas
+      limparMetricasCampanha();
+      // Forçar recarregamento ao buscar métricas do criativo
+      setReloadTrigger(prev => prev + 1);
+      // Buscar métricas específicas do criativo
+      await buscarMetricasPorCriativo(filters.criativo.id);
+    } else if (filters.publico) {
+      console.log('👥 Público selecionado:', filters.publico.name);
+      console.log('🔍 DEBUG - Objeto público completo:', filters.publico);
+      console.log('🆔 DEBUG - ID do público:', filters.publico.id);
+      console.log('📝 DEBUG - Tipo do ID:', typeof filters.publico.id);
+      
+      // Limpar métricas de campanha antes de buscar novas
+      limparMetricasCampanha();
+      // Forçar recarregamento ao buscar métricas do público
+      setReloadTrigger(prev => prev + 1);
+      // Buscar métricas específicas do público
+      await buscarMetricasPorPublico(filters.publico.id);
+    } else if (filters.campanha) {
       console.log('🎯 Campanha selecionada:', filters.campanha.name);
       // Buscar e selecionar a campanha real se ela existir
       await buscarEselecionarCampanha(filters.campanha.id, filters.campanha.name);
     } else if (filters.funil) {
-      console.log('📊 Funil selecionado:', filters.funil.name);
-      // Limpar seleção de campanha para mostrar visão geral do funil
-      selecionarCampanha(null);
+      console.log('📊 Funil selecionado (sem campanha):', filters.funil.name);
+      // IMPORTANTE: Limpar apenas metricasCampanha, sem chamar buscarMetricasGerais
+      limparMetricasCampanha();
+      // Buscar métricas agregadas do funil
       await buscarMetricasPorFunil(filters.funil.id);
     } else {
       console.log('🏠 Voltando para visão geral');
@@ -409,36 +432,6 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
       
     } catch (error) {
       console.error('Erro geral ao buscar métricas da campanha:', error);
-    }
-  };
-
-  // Função para buscar métricas agregadas de um funil
-  const buscarMetricasPorFunil = async (funilId: string) => {
-    try {
-      console.log('📈 Buscando métricas agregadas para funil:', funilId);
-      
-      // Buscar todas as campanhas do funil
-      const { data: campanhas, error: errorCampanhas } = await supabase
-        .from('campanhas')
-        .select('*')
-        .eq('funil_id', funilId);
-
-      if (errorCampanhas) {
-        console.error('Erro ao buscar campanhas do funil:', errorCampanhas);
-        return;
-      }
-
-      // Gerar métricas agregadas de exemplo para o funil
-      const metricasAgregadas = gerarMetricasAgregadasFunil(campanhas || []);
-      console.log('📊 Métricas agregadas do funil:', metricasAgregadas);
-      
-      // Limpar campanha ativa para mostrar visão do funil
-      selecionarCampanha(null);
-      
-      console.log('✅ Métricas agregadas atualizadas para funil');
-      
-    } catch (error) {
-      console.error('Erro ao buscar métricas do funil:', error);
     }
   };
 
@@ -603,9 +596,15 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
       : 0;
 
     // Métricas financeiras (4 cards incluindo custo por lead)
-    // Se for dashboard SDR, buscar dados do Supabase
+    // Estados para armazenar dados de todos os departamentos
     const [sdrDetail, setSdrDetail] = useState<any>(null);
     const [sdrDetailPrev, setSdrDetailPrev] = useState<any>(null);
+    const [closerDetail, setCloserDetail] = useState<any>(null);
+    const [closerDetailPrev, setCloserDetailPrev] = useState<any>(null);
+    const [socialSellerDetail, setSocialSellerDetail] = useState<any>(null);
+    const [socialSellerDetailPrev, setSocialSellerDetailPrev] = useState<any>(null);
+    const [csDetail, setCsDetail] = useState<any>(null);
+    const [csDetailPrev, setCsDetailPrev] = useState<any>(null);
 
     useEffect(() => {
       if (department === 'sdr') {
@@ -624,6 +623,17 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
             // Aplicar filtros se houver campanha selecionada
             if (filtrosAtivos.campanha?.id) {
               queryAtual = queryAtual.eq('referencia_id', filtrosAtivos.campanha.id);
+            } else if (filtrosAtivos.funil?.id) {
+              // Se não há campanha mas há funil, buscar todas campanhas desse funil
+              const { data: campanhasFunil } = await supabase
+                .from('campanhas')
+                .select('id')
+                .eq('funil_id', filtrosAtivos.funil.id);
+              
+              if (campanhasFunil && campanhasFunil.length > 0) {
+                const campanhaIds = campanhasFunil.map(c => c.id);
+                queryAtual = queryAtual.in('referencia_id', campanhaIds);
+              }
             }
 
             const { data: metricasAtuais, error: errorAtual } = await queryAtual.order('periodo_inicio', { ascending: false });
@@ -671,6 +681,17 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
             // Aplicar mesmos filtros para período anterior
             if (filtrosAtivos.campanha?.id) {
               queryAnterior = queryAnterior.eq('referencia_id', filtrosAtivos.campanha.id);
+            } else if (filtrosAtivos.funil?.id) {
+              // Se não há campanha mas há funil, buscar todas campanhas desse funil
+              const { data: campanhasFunil } = await supabase
+                .from('campanhas')
+                .select('id')
+                .eq('funil_id', filtrosAtivos.funil.id);
+              
+              if (campanhasFunil && campanhasFunil.length > 0) {
+                const campanhaIds = campanhasFunil.map(c => c.id);
+                queryAnterior = queryAnterior.in('referencia_id', campanhaIds);
+              }
             }
 
             const { data: metricasAnteriores } = await queryAnterior;
@@ -700,7 +721,282 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
 
         buscarMetricasSdr();
       }
-    }, [department, filtroData.dataInicio, filtroData.dataFim, filtrosAtivos.campanha?.id, reloadTrigger]);
+    }, [department, filtroData.dataInicio, filtroData.dataFim, filtrosAtivos.campanha?.id, filtrosAtivos.funil?.id, reloadTrigger]);
+
+    // Buscar métricas CLOSER
+    useEffect(() => {
+      if (department === 'closer') {
+        const buscarMetricasCloser = async () => {
+          try {
+            let queryAtual = supabase
+              .from('metricas')
+              .select('detalhe_closer')
+              .gte('periodo_inicio', filtroData.dataInicio)
+              .lte('periodo_fim', filtroData.dataFim)
+              .not('detalhe_closer', 'is', null);
+
+            if (filtrosAtivos.campanha?.id) {
+              queryAtual = queryAtual.eq('referencia_id', filtrosAtivos.campanha.id);
+            } else if (filtrosAtivos.funil?.id) {
+              const { data: campanhasFunil } = await supabase
+                .from('campanhas')
+                .select('id')
+                .eq('funil_id', filtrosAtivos.funil.id);
+              
+              if (campanhasFunil && campanhasFunil.length > 0) {
+                const campanhaIds = campanhasFunil.map(c => c.id);
+                queryAtual = queryAtual.in('referencia_id', campanhaIds);
+              }
+            }
+
+            const { data: metricasAtuais } = await queryAtual.order('periodo_inicio', { ascending: false });
+
+            if (metricasAtuais && metricasAtuais.length > 0) {
+              const totalAtual = metricasAtuais.reduce((acc: any, item: any) => {
+                const det = item.detalhe_closer;
+                return {
+                  calls_realizadas: (acc.calls_realizadas || 0) + (det.calls_realizadas || 0),
+                  nao_compareceram: (acc.nao_compareceram || 0) + (det.nao_compareceram || 0),
+                  vendas_mentoria: (acc.vendas_mentoria || 0) + (det.vendas_mentoria || 0),
+                  vendas_downsell: (acc.vendas_downsell || 0) + (det.vendas_downsell || 0),
+                  em_negociacao: (acc.em_negociacao || 0) + (det.em_negociacao || 0),
+                  em_followup: (acc.em_followup || 0) + (det.em_followup || 0),
+                  vendas_perdidas: (acc.vendas_perdidas || 0) + (det.vendas_perdidas || 0)
+                };
+              }, {});
+              setCloserDetail(totalAtual);
+            } else {
+              setCloserDetail(null);
+            }
+
+            // Buscar período anterior
+            const periodoAnterior = calcularPeriodoAnterior();
+            let queryAnterior = supabase
+              .from('metricas')
+              .select('detalhe_closer')
+              .gte('periodo_inicio', periodoAnterior.inicio)
+              .lte('periodo_fim', periodoAnterior.fim)
+              .not('detalhe_closer', 'is', null);
+
+            if (filtrosAtivos.campanha?.id) {
+              queryAnterior = queryAnterior.eq('referencia_id', filtrosAtivos.campanha.id);
+            } else if (filtrosAtivos.funil?.id) {
+              const { data: campanhasFunil } = await supabase
+                .from('campanhas')
+                .select('id')
+                .eq('funil_id', filtrosAtivos.funil.id);
+              
+              if (campanhasFunil && campanhasFunil.length > 0) {
+                const campanhaIds = campanhasFunil.map(c => c.id);
+                queryAnterior = queryAnterior.in('referencia_id', campanhaIds);
+              }
+            }
+
+            const { data: metricasAnteriores } = await queryAnterior;
+
+            if (metricasAnteriores && metricasAnteriores.length > 0) {
+              const totalAnterior = metricasAnteriores.reduce((acc: any, item: any) => {
+                const det = item.detalhe_closer;
+                return {
+                  calls_realizadas: (acc.calls_realizadas || 0) + (det.calls_realizadas || 0),
+                  nao_compareceram: (acc.nao_compareceram || 0) + (det.nao_compareceram || 0),
+                  vendas_mentoria: (acc.vendas_mentoria || 0) + (det.vendas_mentoria || 0)
+                };
+              }, {});
+              setCloserDetailPrev(totalAnterior);
+            } else {
+              setCloserDetailPrev(null);
+            }
+          } catch (err) {
+            console.error('Erro ao buscar métricas Closer:', err);
+          }
+        };
+
+        buscarMetricasCloser();
+      }
+    }, [department, filtroData.dataInicio, filtroData.dataFim, filtrosAtivos.campanha?.id, filtrosAtivos.funil?.id, reloadTrigger]);
+
+    // Buscar métricas SOCIAL SELLER
+    useEffect(() => {
+      if (department === 'social-seller') {
+        const buscarMetricasSocialSeller = async () => {
+          try {
+            let queryAtual = supabase
+              .from('metricas')
+              .select('detalhe_social_seller')
+              .gte('periodo_inicio', filtroData.dataInicio)
+              .lte('periodo_fim', filtroData.dataFim)
+              .not('detalhe_social_seller', 'is', null);
+
+            if (filtrosAtivos.campanha?.id) {
+              queryAtual = queryAtual.eq('referencia_id', filtrosAtivos.campanha.id);
+            } else if (filtrosAtivos.funil?.id) {
+              const { data: campanhasFunil } = await supabase
+                .from('campanhas')
+                .select('id')
+                .eq('funil_id', filtrosAtivos.funil.id);
+              
+              if (campanhasFunil && campanhasFunil.length > 0) {
+                const campanhaIds = campanhasFunil.map(c => c.id);
+                queryAtual = queryAtual.in('referencia_id', campanhaIds);
+              }
+            }
+
+            const { data: metricasAtuais } = await queryAtual.order('periodo_inicio', { ascending: false });
+
+            if (metricasAtuais && metricasAtuais.length > 0) {
+              const totalAtual = metricasAtuais.reduce((acc: any, item: any) => {
+                const det = item.detalhe_social_seller;
+                return {
+                  leads_contatados: (acc.leads_contatados || 0) + (det.leads_contatados || 0),
+                  agendados_diagnostico: (acc.agendados_diagnostico || 0) + (det.agendados_diagnostico || 0),
+                  agendados_mentoria: (acc.agendados_mentoria || 0) + (det.agendados_mentoria || 0),
+                  agendados_consultoria: (acc.agendados_consultoria || 0) + (det.agendados_consultoria || 0),
+                  downsell_vendido: (acc.downsell_vendido || 0) + (det.downsell_vendido || 0)
+                };
+              }, {});
+              setSocialSellerDetail(totalAtual);
+            } else {
+              setSocialSellerDetail(null);
+            }
+
+            // Buscar período anterior
+            const periodoAnterior = calcularPeriodoAnterior();
+            let queryAnterior = supabase
+              .from('metricas')
+              .select('detalhe_social_seller')
+              .gte('periodo_inicio', periodoAnterior.inicio)
+              .lte('periodo_fim', periodoAnterior.fim)
+              .not('detalhe_social_seller', 'is', null);
+
+            if (filtrosAtivos.campanha?.id) {
+              queryAnterior = queryAnterior.eq('referencia_id', filtrosAtivos.campanha.id);
+            } else if (filtrosAtivos.funil?.id) {
+              const { data: campanhasFunil } = await supabase
+                .from('campanhas')
+                .select('id')
+                .eq('funil_id', filtrosAtivos.funil.id);
+              
+              if (campanhasFunil && campanhasFunil.length > 0) {
+                const campanhaIds = campanhasFunil.map(c => c.id);
+                queryAnterior = queryAnterior.in('referencia_id', campanhaIds);
+              }
+            }
+
+            const { data: metricasAnteriores } = await queryAnterior;
+
+            if (metricasAnteriores && metricasAnteriores.length > 0) {
+              const totalAnterior = metricasAnteriores.reduce((acc: any, item: any) => {
+                const det = item.detalhe_social_seller;
+                return {
+                  leads_contatados: (acc.leads_contatados || 0) + (det.leads_contatados || 0),
+                  agendados_diagnostico: (acc.agendados_diagnostico || 0) + (det.agendados_diagnostico || 0),
+                  agendados_mentoria: (acc.agendados_mentoria || 0) + (det.agendados_mentoria || 0)
+                };
+              }, {});
+              setSocialSellerDetailPrev(totalAnterior);
+            } else {
+              setSocialSellerDetailPrev(null);
+            }
+          } catch (err) {
+            console.error('Erro ao buscar métricas Social Seller:', err);
+          }
+        };
+
+        buscarMetricasSocialSeller();
+      }
+    }, [department, filtroData.dataInicio, filtroData.dataFim, filtrosAtivos.campanha?.id, filtrosAtivos.funil?.id, reloadTrigger]);
+
+    // Buscar métricas CS
+    useEffect(() => {
+      if (department === 'cs') {
+        const buscarMetricasCs = async () => {
+          try {
+            let queryAtual = supabase
+              .from('metricas')
+              .select('detalhe_cs')
+              .gte('periodo_inicio', filtroData.dataInicio)
+              .lte('periodo_fim', filtroData.dataFim)
+              .not('detalhe_cs', 'is', null);
+
+            if (filtrosAtivos.campanha?.id) {
+              queryAtual = queryAtual.eq('referencia_id', filtrosAtivos.campanha.id);
+            } else if (filtrosAtivos.funil?.id) {
+              const { data: campanhasFunil } = await supabase
+                .from('campanhas')
+                .select('id')
+                .eq('funil_id', filtrosAtivos.funil.id);
+              
+              if (campanhasFunil && campanhasFunil.length > 0) {
+                const campanhaIds = campanhasFunil.map(c => c.id);
+                queryAtual = queryAtual.in('referencia_id', campanhaIds);
+              }
+            }
+
+            const { data: metricasAtuais } = await queryAtual.order('periodo_inicio', { ascending: false });
+
+            if (metricasAtuais && metricasAtuais.length > 0) {
+              const totalAtual = metricasAtuais.reduce((acc: any, item: any) => {
+                const det = item.detalhe_cs;
+                return {
+                  alunas_contatadas: (acc.alunas_contatadas || 0) + (det.alunas_contatadas || 0),
+                  suporte_prestado: (acc.suporte_prestado || 0) + (det.suporte_prestado || 0),
+                  suporte_resolvidos: (acc.suporte_resolvidos || 0) + (det.suporte_resolvidos || 0),
+                  suporte_pendentes: (acc.suporte_pendentes || 0) + (det.suporte_pendentes || 0),
+                  produtos_vendidos: (acc.produtos_vendidos || 0) + (det.produtos_vendidos || 0)
+                };
+              }, {});
+              setCsDetail(totalAtual);
+            } else {
+              setCsDetail(null);
+            }
+
+            // Buscar período anterior
+            const periodoAnterior = calcularPeriodoAnterior();
+            let queryAnterior = supabase
+              .from('metricas')
+              .select('detalhe_cs')
+              .gte('periodo_inicio', periodoAnterior.inicio)
+              .lte('periodo_fim', periodoAnterior.fim)
+              .not('detalhe_cs', 'is', null);
+
+            if (filtrosAtivos.campanha?.id) {
+              queryAnterior = queryAnterior.eq('referencia_id', filtrosAtivos.campanha.id);
+            } else if (filtrosAtivos.funil?.id) {
+              const { data: campanhasFunil } = await supabase
+                .from('campanhas')
+                .select('id')
+                .eq('funil_id', filtrosAtivos.funil.id);
+              
+              if (campanhasFunil && campanhasFunil.length > 0) {
+                const campanhaIds = campanhasFunil.map(c => c.id);
+                queryAnterior = queryAnterior.in('referencia_id', campanhaIds);
+              }
+            }
+
+            const { data: metricasAnteriores } = await queryAnterior;
+
+            if (metricasAnteriores && metricasAnteriores.length > 0) {
+              const totalAnterior = metricasAnteriores.reduce((acc: any, item: any) => {
+                const det = item.detalhe_cs;
+                return {
+                  alunas_contatadas: (acc.alunas_contatadas || 0) + (det.alunas_contatadas || 0),
+                  suporte_prestado: (acc.suporte_prestado || 0) + (det.suporte_prestado || 0),
+                  suporte_resolvidos: (acc.suporte_resolvidos || 0) + (det.suporte_resolvidos || 0)
+                };
+              }, {});
+              setCsDetailPrev(totalAnterior);
+            } else {
+              setCsDetailPrev(null);
+            }
+          } catch (err) {
+            console.error('Erro ao buscar métricas CS:', err);
+          }
+        };
+
+        buscarMetricasCs();
+      }
+    }, [department, filtroData.dataInicio, filtroData.dataFim, filtrosAtivos.campanha?.id, filtrosAtivos.funil?.id, reloadTrigger]);
 
     // calcular período anterior simples (mesmo tamanho em dias)
     const calcularPeriodoAnterior = () => {
@@ -820,35 +1116,6 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
         }
       ];
     })() : department === 'closer' ? (() => {
-      const getCloserDetailFromStorage = () => {
-        try {
-          if (typeof window === 'undefined') return null;
-          if (!campanhaAtiva) return null;
-          const key = `metricas_closer_${campanhaAtiva.id}_${filtroData.dataInicio}`;
-          const raw = localStorage.getItem(key);
-          if (!raw) return null;
-          const parsed = JSON.parse(raw);
-          return parsed?.detalhe || parsed?.detalhe_closer || null;
-        } catch (err) {
-          return null;
-        }
-      };
-
-      const closerDetail = getCloserDetailFromStorage();
-      const closerDetailPrev = (() => {
-        try {
-          if (typeof window === 'undefined') return null;
-          if (!campanhaAtiva) return null;
-          const key = `metricas_closer_${campanhaAtiva.id}_${periodoAnterior.inicio}`;
-          const raw = localStorage.getItem(key);
-          if (!raw) return null;
-          const parsed = JSON.parse(raw);
-          return parsed?.detalhe || parsed?.detalhe_closer || null;
-        } catch (err) {
-          return null;
-        }
-      })();
-
       const calls = closerDetail?.calls_realizadas ?? 0;
       const noShows = closerDetail?.nao_compareceram ?? 0;
       const vendasMentoria = closerDetail?.vendas_mentoria ?? (metricasParaExibir?.vendas ?? 0);
@@ -932,35 +1199,6 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
         }
       ];
     })() : department === 'social-seller' ? (() => {
-      const getSocialSellerDetailFromStorage = () => {
-        try {
-          if (typeof window === 'undefined') return null;
-          if (!campanhaAtiva) return null;
-          const key = `metricas_social_seller_${campanhaAtiva.id}_${filtroData.dataInicio}`;
-          const raw = localStorage.getItem(key);
-          if (!raw) return null;
-          const parsed = JSON.parse(raw);
-          return parsed?.detalhe || parsed?.detalhe_social_seller || null;
-        } catch (err) {
-          return null;
-        }
-      };
-
-      const socialSellerDetail = getSocialSellerDetailFromStorage();
-      const socialSellerDetailPrev = (() => {
-        try {
-          if (typeof window === 'undefined') return null;
-          if (!campanhaAtiva) return null;
-          const key = `metricas_social_seller_${campanhaAtiva.id}_${periodoAnterior.inicio}`;
-          const raw = localStorage.getItem(key);
-          if (!raw) return null;
-          const parsed = JSON.parse(raw);
-          return parsed?.detalhe || parsed?.detalhe_social_seller || null;
-        } catch (err) {
-          return null;
-        }
-      })();
-
       const leadsContatados = socialSellerDetail?.leads_contatados ?? 0;
       const agendDiag = socialSellerDetail?.agendados_diagnostico ?? 0;
       const agendMent = socialSellerDetail?.agendados_mentoria ?? 0;
@@ -1024,35 +1262,6 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
         }
       ];
     })() : department === 'cs' ? (() => {
-      const getCsDetailFromStorage = () => {
-        try {
-          if (typeof window === 'undefined') return null;
-          if (!campanhaAtiva) return null;
-          const key = `metricas_cs_${campanhaAtiva.id}_${filtroData.dataInicio}`;
-          const raw = localStorage.getItem(key);
-          if (!raw) return null;
-          const parsed = JSON.parse(raw);
-          return parsed?.detalhe || parsed?.detalhe_cs || null;
-        } catch (err) {
-          return null;
-        }
-      };
-
-      const csDetail = getCsDetailFromStorage();
-      const csDetailPrev = (() => {
-        try {
-          if (typeof window === 'undefined') return null;
-          if (!campanhaAtiva) return null;
-          const key = `metricas_cs_${campanhaAtiva.id}_${periodoAnterior.inicio}`;
-          const raw = localStorage.getItem(key);
-          if (!raw) return null;
-          const parsed = JSON.parse(raw);
-          return parsed?.detalhe || parsed?.detalhe_cs || null;
-        } catch (err) {
-          return null;
-        }
-      })();
-
       const alunasContatadas = csDetail?.alunas_contatadas ?? 0;
       const suportePrestado = csDetail?.suporte_prestado ?? 0;
       const suporteResolvidos = csDetail?.suporte_resolvidos ?? 0;
@@ -1239,96 +1448,78 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
 
   return (
     <div className="space-y-4 p-2">
-      {/* Futuristic Header */}
-      <div className="relative">
+      {/* Header + Filtros Unificados */}
+      <div className="relative z-50">
         <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-pink-500/10 blur-3xl" />
-        <div className="relative bg-slate-900/50 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-5">
+        <div className="relative bg-slate-900/50 backdrop-blur-xl border border-slate-700/50 rounded-xl p-4">
+          
+          {/* Linha 1: Título + Botões */}
           <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
               <div className="flex space-x-1">
-                <div className="w-3 h-3 bg-cyan-400 rounded-full animate-pulse"></div>
-                <div className="w-3 h-3 bg-purple-400 rounded-full animate-pulse animation-delay-200"></div>
-                <div className="w-3 h-3 bg-pink-400 rounded-full animate-pulse animation-delay-400"></div>
+                <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse animation-delay-200"></div>
+                <div className="w-2 h-2 bg-pink-400 rounded-full animate-pulse animation-delay-400"></div>
               </div>
-              <h1 className="text-3xl font-bold text-white bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+              <h1 className="text-xl font-bold text-white bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
                 {defaultTitle}
                 {(campanhaAtiva || filtrosAtivos.funil) && (
-                  <span className="text-2xl font-semibold text-slate-300">{` • ${campanhaAtiva ? `Campanha: ${campanhaAtiva.nome}` : `Funil: ${filtrosAtivos.funil?.name}`}`}</span>
+                  <span className="text-base font-semibold text-slate-300">{` • ${campanhaAtiva ? `Campanha: ${campanhaAtiva.nome}` : `Funil: ${filtrosAtivos.funil?.name}`}`}</span>
                 )}
               </h1>
-              
-              {/* Indicador de Filtros Ativos */}
-              {(filtrosAtivos.funil || filtrosAtivos.campanha || filtrosAtivos.publico || filtrosAtivos.criativo) && (
-                <div className="flex items-center space-x-2 mt-2">
-                  <div className="flex items-center space-x-1 px-3 py-1 bg-gradient-to-r from-cyan-500/20 to-purple-500/20 rounded-full border border-cyan-500/30">
-                    <Filter className="h-3 w-3 text-cyan-400" />
-                    <span className="text-xs text-cyan-300 font-medium">Filtros ativos</span>
-                  </div>
-                  <div className="flex items-center space-x-1 text-xs text-slate-400">
-                    {filtrosAtivos.funil && (
-                      <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded">
-                        📊 {filtrosAtivos.funil.name}
-                      </span>
-                    )}
-                    {filtrosAtivos.campanha && (
-                      <span className="px-2 py-0.5 bg-green-500/20 text-green-300 rounded">
-                        📈 {filtrosAtivos.campanha.name}
-                      </span>
-                    )}
-                    {filtrosAtivos.publico && (
-                      <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded">
-                        👥 {filtrosAtivos.publico.name}
-                      </span>
-                    )}
-                    {filtrosAtivos.criativo && (
-                      <span className="px-2 py-0.5 bg-orange-500/20 text-orange-300 rounded">
-                        🎨 {filtrosAtivos.criativo.name}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
             
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => {
+                  console.log('🔄 Forçando recarregamento das métricas...');
+                  setReloadTrigger(prev => prev + 1);
+                  recarregarMetricas();
+                }}
+                disabled={loading}
+                className="flex items-center space-x-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-sm rounded-md font-medium hover:from-blue-600 hover:to-cyan-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>Atualizar</span>
+              </button>
+              
+              {showEditButton && (
+                <button
+                  onClick={() => setModalEditarAberto(true)}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-gradient-to-r from-cyan-500 to-purple-500 text-white text-sm rounded-md font-medium hover:from-cyan-600 hover:to-purple-600 transition-all"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Incluir</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Linha 2: Filtros Inline */}
+          <div className="flex flex-col lg:flex-row items-start lg:items-end gap-4 pt-3 border-t border-slate-700/30">
+            {/* Filtros de Período */}
+            <div className="flex-shrink-0">
+              <FiltrosDashboard
+                filtroAtual={filtroData}
+                onFiltroChange={atualizarFiltroData}
+                campanhaAtiva={campanhaAtiva}
+                onMetricasAtualizadas={recarregarMetricas}
+              />
+            </div>
+            
+            {/* Divisor vertical */}
+            <div className="hidden lg:block h-16 w-px bg-slate-600/50"></div>
+            
+            {/* Filtros de Campanha */}
+            <div className="flex-1 w-full">
+              <FiltrosCascata onFiltersChange={handleFiltersChange} />
+            </div>
           </div>
           
-          <p className="text-slate-300 text-base">
-            {campanhaAtiva 
-              ? `Análise detalhada da campanha • ${campanhaAtiva.plataforma} • ${campanhaAtiva.tipo.charAt(0).toUpperCase() + campanhaAtiva.tipo.slice(1)}`
-              : 'Visão consolidada de todas as campanhas • Métricas agregadas'
-            }
-          </p>
-          {loading && (
-            <div className="mt-4 flex items-center text-cyan-400">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-cyan-400 mr-2"></div>
-              Carregando dados da campanha...
-            </div>
-          )}
-
-          {showEditButton && (
-            <div className="mt-4 flex justify-end">
-              <button
-                onClick={() => setModalEditarAberto(true)}
-                className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-cyan-500 to-purple-500 text-white rounded-md font-medium hover:from-cyan-600 hover:to-purple-600 transition-all"
-              >
-                <Plus className="h-4 w-4" />
-                <span>Incluir Métricas</span>
-              </button>
-            </div>
-          )}
         </div>
       </div>
-
-      {/* Filtros de Data */}
-      <FiltrosDashboard
-        filtroAtual={filtroData}
-        onFiltroChange={atualizarFiltroData}
-        campanhaAtiva={campanhaAtiva}
-        onMetricasAtualizadas={recarregarMetricas}
-      />
-
-      {/* Filtros de Campanha em Cascata */}
-      <FiltrosCascata onFiltersChange={handleFiltersChange} />
 
         {/* Métricas Financeiras */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1349,11 +1540,26 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
         {/* Funil de Conversão (ocultar no dashboard SDR, Closer, Social Seller e CS) */}
         {department !== 'sdr' && department !== 'closer' && department !== 'social-seller' && department !== 'cs' && <FunilConversao />}
 
-        {/* Gráficos Futurísticos */}
-        <FuturisticCharts data={chartData} />
+        {/* Insights Inteligentes - apenas para Tráfego */}
+        {department !== 'sdr' && department !== 'closer' && department !== 'social-seller' && department !== 'cs' && (
+          <InsightsCards 
+            dataInicio={filtroData.dataInicio}
+            dataFim={filtroData.dataFim}
+            funilId={filtrosAtivos.funil?.id}
+            campanhaId={filtrosAtivos.campanha?.id}
+          />
+        )}
 
-        {/* Tabela Futurística */}
-        <FuturisticCampanhasTable campanhas={campanhasData} />
+        {/* Gráficos Futurísticos - DESABILITADO (não funcional) */}
+        {/* <FuturisticCharts data={chartData} /> */}
+
+        {/* Tabela de Campanhas - apenas para Tráfego e Dashboard Geral */}
+        {(department === 'trafego' || !department) && (
+          <FuturisticCampanhasTable 
+            dataInicio={filtroData.dataInicio}
+            dataFim={filtroData.dataFim}
+          />
+        )}
 
         {/* Modal de edição de métricas (montado para controle via botão) */}
         {showEditButton && (
@@ -1361,9 +1567,32 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
             open={modalEditarAberto}
             onOpenChange={setModalEditarAberto}
             campanha={campanhaAtiva}
-            onDadosAtualizados={() => {
-              recarregarMetricas();
+            onDadosAtualizados={async () => {
+              console.log('🔄 Recarregando métricas após salvar no modal...');
+              console.log('🔍 Filtros ativos:', filtrosAtivos);
+              
+              // Recarregar de acordo com o filtro ativo
+              if (filtrosAtivos.criativo) {
+                console.log('🎨 Recarregando métricas do criativo:', filtrosAtivos.criativo.name);
+                await buscarMetricasPorCriativo(filtrosAtivos.criativo.id);
+              } else if (filtrosAtivos.publico) {
+                console.log('👥 Recarregando métricas do público:', filtrosAtivos.publico.name);
+                await buscarMetricasPorPublico(filtrosAtivos.publico.id);
+              } else if (filtrosAtivos.campanha) {
+                console.log('🎯 Recarregando métricas da campanha:', filtrosAtivos.campanha.name);
+                if (campanhaAtiva) {
+                  recarregarMetricas();
+                }
+              } else if (filtrosAtivos.funil) {
+                console.log('📊 Recarregando métricas do funil:', filtrosAtivos.funil.name);
+                await buscarMetricasPorFunil(filtrosAtivos.funil.id);
+              } else {
+                console.log('🏠 Recarregando métricas gerais');
+                recarregarMetricas();
+              }
+              
               setReloadTrigger(prev => prev + 1);
+              console.log('✅ Métricas recarregadas!');
             }}
             hideFinanceFields={hideFinanceFields}
             department={department}

@@ -80,16 +80,31 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
     }
   }, [filters.funil]);
 
-  // Carregar públicos e criativos quando campanha é selecionada
+  // Carregar públicos quando campanha é selecionada
   useEffect(() => {
     if (filters.campanha) {
       carregarPublicos(filters.campanha.id);
-      carregarCriativos(filters.campanha.id);
+      // Só carrega criativos se NÃO tiver público selecionado
+      if (!filters.publico) {
+        carregarCriativos(filters.campanha.id);
+      }
     } else {
       setPublicos([]);
       setCriativos([]);
     }
   }, [filters.campanha]);
+
+  // Carregar criativos quando público é selecionado
+  useEffect(() => {
+    if (filters.publico) {
+      carregarCriativosPorPublico(filters.publico.id);
+    } else if (filters.campanha) {
+      // Se desmarcar público, volta a mostrar criativos da campanha
+      carregarCriativos(filters.campanha.id);
+    } else {
+      setCriativos([]);
+    }
+  }, [filters.publico]);
 
   const carregarFunis = async () => {
     try {
@@ -220,10 +235,10 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
 
   const carregarPublicos = async (campanhaId: string) => {
     try {
-      // Buscar conjuntos de anúncio da campanha diretamente
+      // Buscar conjuntos de anúncio da campanha diretamente com o ID
       const { data: conjuntos, error } = await supabase
         .from('conjuntos_anuncio')
-        .select('publico, nome')
+        .select('id, publico, nome')
         .eq('campanha_id', campanhaId);
 
       if (error) {
@@ -237,15 +252,15 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
         return;
       }
 
-      // Normalizar e extrair públicos únicos (usando nome do conjunto como público)
+      // Normalizar e extrair públicos únicos (usando ID do conjunto_anuncio)
       const mapaPublicos: Record<string, FilterOption> = {};
       conjuntos.forEach((conjunto) => {
-        const publico = conjunto?.publico || conjunto?.nome;
-        if (!publico) return;
+        const publicoNome = conjunto?.publico || conjunto?.nome;
+        if (!publicoNome || !conjunto?.id) return;
 
-        // Usar o valor do público como string
-        const publicoStr = String(publico);
-        mapaPublicos[publicoStr] = { id: publicoStr, name: publicoStr };
+        // Usar o ID do conjunto_anuncio como ID, e o nome/publico como name
+        const publicoStr = String(publicoNome);
+        mapaPublicos[conjunto.id] = { id: conjunto.id, name: publicoStr };
       });
 
       const listaPublicos = Object.values(mapaPublicos);
@@ -257,8 +272,43 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
     }
   };
 
+  const carregarCriativosPorPublico = async (publicoId: string) => {
+    try {
+      console.log('🎨 Carregando criativos do público:', publicoId);
+      
+      // Buscar anúncios apenas deste público específico
+      const { data: anunciosData, error: errorAnuncios } = await supabase
+        .from('anuncios')
+        .select('id, nome, tipo')
+        .eq('conjunto_anuncio_id', publicoId);
+
+      if (errorAnuncios) {
+        console.error('Erro ao buscar anúncios do público:', errorAnuncios);
+        setCriativos([]);
+        return;
+      }
+
+      const mapaCriativos: Record<string, FilterOption> = {};
+
+      anunciosData?.forEach((anuncio) => {
+        if (!anuncio) return;
+        const id = anuncio.id;
+        const name = `${anuncio.nome}${anuncio.tipo ? ` (${anuncio.tipo})` : ''}`;
+        mapaCriativos[id] = { id, name };
+      });
+
+      setCriativos(Object.values(mapaCriativos));
+      console.log('✅ Criativos do público carregados:', Object.keys(mapaCriativos).length);
+    } catch (error) {
+      console.error('Erro ao carregar criativos do público:', error);
+      setCriativos([]);
+    }
+  };
+
   const carregarCriativos = async (campanhaId: string) => {
     try {
+      console.log('🎨 Carregando criativos da campanha:', campanhaId);
+      
       // Buscar anúncios (criativos) através dos conjuntos de anúncio da campanha
       const { data: conjuntosData, error: errorConjuntos } = await supabase
         .from('conjuntos_anuncio')
@@ -325,6 +375,9 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
     
     setFilters(newFilters);
     setOpenDropdown(null);
+    
+    // Aplicar filtros automaticamente quando seleciona
+    onFiltersChange(newFilters);
   };
 
   const clearFilters = () => {
@@ -338,8 +391,24 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
     onFiltersChange(clearedFilters);
   };
 
-  const applyFilters = () => {
-    onFiltersChange(filters);
+  const removeFilter = (filterType: keyof FilterState) => {
+    const newFilters = { ...filters };
+    newFilters[filterType] = null;
+    
+    // Se remover funil, limpar campanha, público e criativo
+    if (filterType === 'funil') {
+      newFilters.campanha = null;
+      newFilters.publico = null;
+      newFilters.criativo = null;
+    }
+    // Se remover campanha, limpar público e criativo
+    else if (filterType === 'campanha') {
+      newFilters.publico = null;
+      newFilters.criativo = null;
+    }
+    
+    setFilters(newFilters);
+    onFiltersChange(newFilters);
   };
 
   useEffect(() => {
@@ -360,12 +429,12 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
     placeholder: string,
     disabled = false
   ) => (
-    <div className="relative z-20" data-dropdown>
+    <div className="relative z-50" data-dropdown>
       <button
         onClick={() => setOpenDropdown(openDropdown === type ? null : type)}
         disabled={disabled}
         className={`
-          w-full flex items-center justify-between px-4 py-2 rounded-lg border transition-all duration-200
+          w-full flex items-center justify-between px-3 py-1.5 text-sm rounded-md border transition-all duration-200
           ${disabled 
             ? 'bg-slate-800/30 border-slate-700/30 text-slate-500 cursor-not-allowed' 
             : 'bg-slate-800/50 border-slate-600/50 text-white hover:border-cyan-500/50 hover:bg-slate-700/50'
@@ -373,25 +442,25 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
           ${openDropdown === type ? 'border-cyan-500/70 bg-slate-700/50' : ''}
         `}
       >
-        <span className="text-sm">
+        <span className="text-xs truncate">
           {filters[type]?.name || placeholder}
         </span>
-        <ChevronDown className={`h-4 w-4 transition-transform ${
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform flex-shrink-0 ${
           openDropdown === type ? 'rotate-180' : ''
         }`} />
       </button>
 
       {openDropdown === type && !disabled && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-slate-800/95 backdrop-blur-xl border border-slate-600/50 rounded-lg shadow-2xl z-[100] max-h-60 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800/95 backdrop-blur-xl border border-slate-600/50 rounded-md shadow-2xl z-[9999] max-h-60 overflow-y-auto">
           {options.map((option) => (
             <button
               key={option.id}
               onClick={() => handleFilterSelect(type, option)}
-              className="w-full px-4 py-3 text-left text-sm text-white hover:bg-slate-700/50 transition-colors flex items-center justify-between group"
+              className="w-full px-3 py-2 text-left text-xs text-white hover:bg-slate-700/50 transition-colors flex items-center justify-between group"
             >
-              <span>{option.name}</span>
+              <span className="truncate">{option.name}</span>
               {option.count && (
-                <span className="text-xs text-slate-400 group-hover:text-cyan-400">
+                <span className="text-[10px] text-slate-400 group-hover:text-cyan-400 flex-shrink-0 ml-2">
                   {option.count.toLocaleString()}
                 </span>
               )}
@@ -403,122 +472,61 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
   );
 
   return (
-    <div className={`relative z-10 ${className}`}>
-      <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 via-purple-500/5 to-pink-500/5 blur-2xl" />
-      <div className="relative bg-slate-900/50 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 z-10">
+    <div className={`space-y-2 relative z-50 ${className}`}>
+      <div className="flex items-center gap-1.5 mb-2">
+        <Filter className="h-3.5 w-3.5 text-purple-400" />
+        <h3 className="text-xs font-semibold text-slate-300">Filtros de Campanha</h3>
+      </div>
+
+      {/* Filtros em Grid Compacto */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 relative z-50">
         
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-2">
-            <div className="p-1.5 bg-gradient-to-r from-cyan-500 to-purple-500 rounded-lg">
-              <Filter className="h-4 w-4 text-white" />
-            </div>
-            <h3 className="text-base font-bold text-white bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
-              Filtros de Campanha
-            </h3>
-          </div>
+        {/* Funil */}
+        <div>
+          <label className="block text-[10px] font-medium text-slate-400 mb-1">
+            FUNIL
+          </label>
+          {renderDropdown('funil', funis, 'Todos os funis', loading)}
         </div>
 
-        {/* Filtros em Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-          
-          {/* Funil */}
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5 uppercase tracking-wider">
-              Funil {loading && <span className="text-cyan-400">(Carregando...)</span>}
-            </label>
-            {renderDropdown('funil', funis, 'Selecionar funil', loading)}
-          </div>
-
-          {/* Campanha */}
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5 uppercase tracking-wider">
-              Campanha
-            </label>
-            {renderDropdown('campanha', campanhas, 'Selecionar campanha', !filters.funil)}
-          </div>
-
-          {/* Público */}
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5 uppercase tracking-wider">
-              Público-Alvo
-            </label>
-            {renderDropdown('publico', publicos, 'Selecionar público', !filters.campanha)}
-          </div>
-
-          {/* Criativo */}
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5 uppercase tracking-wider">
-              Criativo
-            </label>
-            {renderDropdown('criativo', criativos, 'Selecionar criativo', !filters.campanha)}
-          </div>
-
+        {/* Campanha */}
+        <div>
+          <label className="block text-[10px] font-medium text-slate-400 mb-1">
+            CAMPANHA
+          </label>
+          {renderDropdown('campanha', campanhas, 'Todas campanhas', !filters.funil)}
         </div>
 
-        {/* Filtros Ativos */}
-        {(filters.funil || filters.campanha || filters.publico || filters.criativo) && (
-          <div className="mb-4">
-            <div className="flex items-center space-x-2 text-xs text-slate-400 mb-2">
-              <span>Filtros ativos:</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {filters.funil && (
-                <span className="px-3 py-1 bg-blue-500/20 text-blue-300 rounded-full text-xs flex items-center space-x-1">
-                  <span>📊 {filters.funil.name}</span>
-                  <button onClick={() => handleFilterSelect('funil', filters.funil!)} className="hover:text-white">
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              )}
-              {filters.campanha && (
-                <span className="px-3 py-1 bg-green-500/20 text-green-300 rounded-full text-xs flex items-center space-x-1">
-                  <span>📈 {filters.campanha.name}</span>
-                  <button onClick={() => handleFilterSelect('campanha', filters.campanha!)} className="hover:text-white">
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              )}
-              {filters.publico && (
-                <span className="px-3 py-1 bg-purple-500/20 text-purple-300 rounded-full text-xs flex items-center space-x-1">
-                  <span>👥 {filters.publico.name}</span>
-                  <button onClick={() => setFilters({...filters, publico: null})} className="hover:text-white">
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              )}
-              {filters.criativo && (
-                <span className="px-3 py-1 bg-orange-500/20 text-orange-300 rounded-full text-xs flex items-center space-x-1">
-                  <span>🎨 {filters.criativo.name}</span>
-                  <button onClick={() => setFilters({...filters, criativo: null})} className="hover:text-white">
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Público */}
+        <div>
+          <label className="block text-[10px] font-medium text-slate-400 mb-1">
+            PÚBLICO
+          </label>
+          {renderDropdown('publico', publicos, 'Todos públicos', !filters.campanha)}
+        </div>
 
-        {/* Botões de Ação */}
-        <div className="flex items-center justify-between">
-          <button
-            onClick={clearFilters}
-            className="flex items-center space-x-2 px-4 py-2 text-slate-400 hover:text-white transition-colors"
-          >
-            <X className="h-4 w-4" />
-            <span className="text-sm">Limpar filtros</span>
-          </button>
-
-          <button
-            onClick={applyFilters}
-            className="flex items-center space-x-2 px-6 py-2 bg-gradient-to-r from-cyan-500 to-purple-500 text-white rounded-lg font-medium hover:from-cyan-600 hover:to-purple-600 transition-all duration-200"
-          >
-            <Check className="h-4 w-4" />
-            <span className="text-sm">Aplicar filtros</span>
-          </button>
+        {/* Criativo */}
+        <div>
+          <label className="block text-[10px] font-medium text-slate-400 mb-1">
+            CRIATIVO
+          </label>
+          {renderDropdown('criativo', criativos, 'Todos criativos', !filters.campanha)}
         </div>
 
       </div>
+
+      {/* Botão Limpar - Minimalista */}
+      {(filters.funil || filters.campanha || filters.publico || filters.criativo) && (
+        <div className="flex items-center justify-end">
+          <button
+            onClick={clearFilters}
+            className="flex items-center space-x-1 px-2 py-1 text-[10px] text-slate-400 hover:text-red-400 transition-colors"
+          >
+            <X className="h-3 w-3" />
+            <span>Limpar</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
