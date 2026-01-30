@@ -26,8 +26,8 @@ interface InsightData {
   alertaOtimizacao?: {
     nome: string;
     investimento: number;
-    roas: number;
-    tipo: 'campanha' | 'publico';
+    leads: number;
+    cpl: number;
   };
 }
 
