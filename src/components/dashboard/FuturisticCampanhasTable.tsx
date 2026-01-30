@@ -245,7 +245,7 @@ export function FuturisticCampanhasTable({ dataInicio, dataFim }: FuturisticCamp
                     key={campanha.id} 
                     className={cn(
                       "border-slate-700/30 hover:bg-slate-800/40 transition-all duration-300 group/row",
-                      campanha.ativa ? "bg-slate-900/20" : "bg-slate-800/20 opacity-75"
+                      campanha.ativo ? "bg-slate-900/20" : "bg-slate-800/20 opacity-75"
                     )}
                   >
                     <TableCell>
