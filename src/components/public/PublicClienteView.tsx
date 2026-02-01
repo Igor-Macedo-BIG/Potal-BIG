@@ -2,7 +2,9 @@
 
 import { useEffect } from 'react';
 import { useCliente } from '@/contexts/ClienteContext';
+import { useCampanhaContext } from '@/contexts/CampanhaContext';
 import { DashboardCampanha } from '@/components/dashboard/DashboardCampanha';
+import RelatoriosPublicos from '@/components/public/RelatoriosPublicos';
 import { TrendingUp } from 'lucide-react';
 
 interface Cliente {
@@ -20,6 +22,7 @@ interface PublicClienteViewProps {
 
 export default function PublicClienteView({ cliente }: PublicClienteViewProps) {
   const { selecionarCliente } = useCliente();
+  const { filtroData } = useCampanhaContext();
 
   useEffect(() => {
     // Selecionar o cliente automaticamente ao carregar a página
@@ -261,6 +264,16 @@ export default function PublicClienteView({ cliente }: PublicClienteViewProps) {
                 border-radius: 0.5rem !important;
               }
             `}</style>
+            
+            {/* Relatórios e Observações do Período */}
+            <div className="mb-6">
+              <RelatoriosPublicos 
+                clienteId={cliente.id}
+                dataInicio={filtroData.dataInicio}
+                dataFim={filtroData.dataFim}
+              />
+            </div>
+            
             <DashboardCampanha />
           </div>
         </div>

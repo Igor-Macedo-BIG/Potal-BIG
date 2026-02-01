@@ -12,10 +12,12 @@ import { FiltrosCascata } from '@/components/dashboard/FiltrosCascata';
 import { InsightsCards } from '@/components/dashboard/InsightsCards';
 import { supabase } from '@/lib/supabase';
 import ModalEditarMetricas from '@/components/modals/ModalEditarMetricas';
+import ModalRelatorios from '@/components/modals/ModalRelatorios';
 import { MetricaFilter } from '@/components/public/MetricaFilter';
+import { AlertasCliente } from './AlertasCliente';
 import ClienteSelector from '@/components/ClienteSelector';
 
-import { TrendingUp, Users, MousePointer, Target, Zap, Rocket, Brain, Star, Edit3, Plus, DollarSign, UserCheck, ShoppingCart, Megaphone, Phone, Handshake, HeadphonesIcon, Eye, BarChart3, Calendar, MessageCircle, Clock, Award, TrendingDown, Filter, Share2 } from 'lucide-react';
+import { TrendingUp, Users, MousePointer, Target, Zap, Rocket, Brain, Star, Edit3, Plus, FileText, DollarSign, UserCheck, ShoppingCart, Megaphone, Phone, Handshake, HeadphonesIcon, Eye, BarChart3, Calendar, MessageCircle, Clock, Award, TrendingDown, Filter, Share2 } from 'lucide-react';
 
 // Componente de Abas dos Departamentos - Estilo Funil de Conversão
 function DashboardTabs() {
@@ -241,6 +243,9 @@ function DashboardTabs() {
       </div>
 
       <div className="p-6">
+        {/* Alertas e Observações */}
+        <AlertasCliente />
+
         {/* Título do Departamento */}
         <div className="text-center mb-8">
           <h2 className="text-2xl font-black text-slate-300 mb-2">
@@ -308,6 +313,7 @@ interface FilterState {
 export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditButton = false, hideFinanceFields = false, department }: { defaultTitle?: string; showEditButton?: boolean; hideFinanceFields?: boolean; department?: string }) {
   const { campanhaAtiva, metricasCampanha, metricasGerais, loading, filtroData, atualizarFiltroData, recarregarMetricas, selecionarCampanha, buscarMetricasPorFunil, buscarMetricasPorPublico, buscarMetricasPorCriativo, limparMetricasCampanha } = useCampanhaContext();
   const [modalEditarAberto, setModalEditarAberto] = useState(false);
+  const [modalRelatoriosAberto, setModalRelatoriosAberto] = useState(false);
   const [reloadTrigger, setReloadTrigger] = useState(0);
   
   // Carregar filtros do localStorage
@@ -1575,13 +1581,23 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
               </button>
               
               {showEditButton && (
-                <button
-                  onClick={() => setModalEditarAberto(true)}
-                  className="flex items-center justify-center space-x-1.5 px-3 py-2 sm:py-1.5 bg-gradient-to-r from-cyan-500 to-purple-500 text-white text-sm rounded-md font-medium hover:from-cyan-600 hover:to-purple-600 transition-all flex-1 sm:flex-initial"
-                >
-                  <Plus className="h-4 sm:h-3.5 w-4 sm:w-3.5" />
-                  <span>Incluir</span>
-                </button>
+                <>
+                  <button
+                    onClick={() => setModalEditarAberto(true)}
+                    className="flex items-center justify-center space-x-1.5 px-3 py-2 sm:py-1.5 bg-gradient-to-r from-cyan-500 to-purple-500 text-white text-sm rounded-md font-medium hover:from-cyan-600 hover:to-purple-600 transition-all flex-1 sm:flex-initial"
+                  >
+                    <Plus className="h-4 sm:h-3.5 w-4 sm:w-3.5" />
+                    <span>Incluir</span>
+                  </button>
+                  
+                  <button
+                    onClick={() => setModalRelatoriosAberto(true)}
+                    className="flex items-center justify-center space-x-1.5 px-3 py-2 sm:py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm rounded-md font-medium hover:from-purple-600 hover:to-pink-600 transition-all flex-1 sm:flex-initial"
+                  >
+                    <FileText className="h-4 sm:h-3.5 w-4 sm:w-3.5" />
+                    <span>Relatórios</span>
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -1680,42 +1696,49 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
 
         {/* Modal de edição de métricas (montado para controle via botão) */}
         {showEditButton && (
-          <ModalEditarMetricas
-            open={modalEditarAberto}
-            onOpenChange={setModalEditarAberto}
-            campanha={campanhaAtiva}
-            onDadosAtualizados={async () => {
-              console.log('🔄 Recarregando métricas após salvar no modal...');
-              console.log('🔍 Filtros ativos:', filtrosAtivos);
-              
-              // Recarregar de acordo com o filtro ativo
-              if (filtrosAtivos.criativo) {
-                console.log('🎨 Recarregando métricas do criativo:', filtrosAtivos.criativo.name);
-                await buscarMetricasPorCriativo(filtrosAtivos.criativo.id);
-              } else if (filtrosAtivos.publico) {
-                console.log('👥 Recarregando métricas do público:', filtrosAtivos.publico.name);
-                await buscarMetricasPorPublico(filtrosAtivos.publico.id);
-              } else if (filtrosAtivos.campanha) {
-                console.log('🎯 Recarregando métricas da campanha:', filtrosAtivos.campanha.name);
-                if (campanhaAtiva) {
+          <>
+            <ModalEditarMetricas
+              open={modalEditarAberto}
+              onOpenChange={setModalEditarAberto}
+              campanha={campanhaAtiva}
+              onDadosAtualizados={async () => {
+                console.log('🔄 Recarregando métricas após salvar no modal...');
+                console.log('🔍 Filtros ativos:', filtrosAtivos);
+                
+                // Recarregar de acordo com o filtro ativo
+                if (filtrosAtivos.criativo) {
+                  console.log('🎨 Recarregando métricas do criativo:', filtrosAtivos.criativo.name);
+                  await buscarMetricasPorCriativo(filtrosAtivos.criativo.id);
+                } else if (filtrosAtivos.publico) {
+                  console.log('👥 Recarregando métricas do público:', filtrosAtivos.publico.name);
+                  await buscarMetricasPorPublico(filtrosAtivos.publico.id);
+                } else if (filtrosAtivos.campanha) {
+                  console.log('🎯 Recarregando métricas da campanha:', filtrosAtivos.campanha.name);
+                  if (campanhaAtiva) {
+                    recarregarMetricas();
+                  }
+                } else if (filtrosAtivos.funil) {
+                  console.log('📊 Recarregando métricas do funil:', filtrosAtivos.funil.name);
+                  await buscarMetricasPorFunil(filtrosAtivos.funil.id);
+                } else {
+                  console.log('🏠 Recarregando métricas gerais');
                   recarregarMetricas();
                 }
-              } else if (filtrosAtivos.funil) {
-                console.log('📊 Recarregando métricas do funil:', filtrosAtivos.funil.name);
-                await buscarMetricasPorFunil(filtrosAtivos.funil.id);
-              } else {
-                console.log('🏠 Recarregando métricas gerais');
-                recarregarMetricas();
-              }
-              
-              setReloadTrigger(prev => prev + 1);
-              console.log('✅ Métricas recarregadas!');
-            }}
-            hideFinanceFields={hideFinanceFields}
-            department={department}
-            filtrosIniciais={filtrosAtivos}
-            dataInicial={filtroData.dataInicio}
-          />
+                
+                setReloadTrigger(prev => prev + 1);
+                console.log('✅ Métricas recarregadas!');
+              }}
+              hideFinanceFields={hideFinanceFields}
+              department={department}
+              filtrosIniciais={filtrosAtivos}
+              dataInicial={filtroData.dataInicio}
+            />
+            
+            <ModalRelatorios
+              open={modalRelatoriosAberto}
+              onOpenChange={setModalRelatoriosAberto}
+            />
+          </>
         )}
 
 
