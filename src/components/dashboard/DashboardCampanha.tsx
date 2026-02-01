@@ -650,6 +650,7 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
     };
     
     const mediaDiariaLeads = calcularMediaDiaria();
+    const [sdrDetail, setSdrDetail] = useState<any>(null);
     const [sdrDetailPrev, setSdrDetailPrev] = useState<any>(null);
     const [closerDetail, setCloserDetail] = useState<any>(null);
     const [closerDetailPrev, setCloserDetailPrev] = useState<any>(null);
