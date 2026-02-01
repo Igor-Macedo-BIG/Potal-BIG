@@ -33,31 +33,35 @@ export default function ClienteSelector() {
   }
 
   return (
-    <div className='flex items-center gap-3'>
-      <Building2 className='h-4 w-4 text-muted-foreground' />
-      <Select
-        value={clienteSelecionado?.id || ''}
-        onValueChange={(value) => {
-          const cliente = clientes.find((c) => c.id === value);
-          selecionarCliente(cliente || null);
-        }}
-      >
-        <SelectTrigger className='w-[250px]'>
-          <SelectValue placeholder='Selecione um cliente' />
-        </SelectTrigger>
-        <SelectContent>
-          {clientes.map((cliente) => (
-            <SelectItem key={cliente.id} value={cliente.id}>
-              {cliente.nome}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+    <div className='space-y-2'>
+      <div className='flex items-center gap-3'>
+        <Building2 className='h-4 w-4 text-muted-foreground' />
+        <Select
+          value={clienteSelecionado?.id || ''}
+          onValueChange={(value) => {
+            const cliente = clientes.find((c) => c.id === value);
+            selecionarCliente(cliente || null);
+          }}
+        >
+          <SelectTrigger className='w-full'>
+            <SelectValue placeholder='Selecione um cliente' />
+          </SelectTrigger>
+          <SelectContent>
+            {clientes.map((cliente) => (
+              <SelectItem key={cliente.id} value={cliente.id}>
+                {cliente.nome}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       {clienteSelecionado && clienteSelecionado.slug && (
-        <CopyPublicLinkButton
-          clienteSlug={clienteSelecionado.slug}
-          clienteNome={clienteSelecionado.nome}
-        />
+        <div className='pl-7'>
+          <CopyPublicLinkButton
+            clienteSlug={clienteSelecionado.slug}
+            clienteNome={clienteSelecionado.nome}
+          />
+        </div>
       )}
     </div>
   );

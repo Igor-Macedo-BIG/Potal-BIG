@@ -192,60 +192,76 @@ export default function AdminClientes() {
         </Button>
       </div>
 
-      <Card>
+      <Card className="bg-gray-800/50 border-gray-700">
         <CardHeader>
-          <CardTitle>Todos os Clientes</CardTitle>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-white flex items-center gap-2">
+                <Plus className="h-5 w-5" />
+                Todos os Clientes
+              </CardTitle>
+              <p className="text-gray-400 text-sm mt-1">Gerencie seus clientes e configure seus acessos</p>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {clientes.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">
-              Nenhum cliente cadastrado. Clique em "Novo Cliente" para começar.
-            </p>
+            <div className="text-center py-12 text-gray-400">
+              <Plus className="h-12 w-12 mx-auto mb-4 text-gray-600" />
+              <p className="text-lg font-medium mb-2">Nenhum cliente cadastrado</p>
+              <p className="text-sm">Clique em "Novo Cliente" para começar.</p>
+            </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Telefone</TableHead>
-                  <TableHead>Data de Cadastro</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {clientes.map((cliente) => (
-                  <TableRow key={cliente.id}>
-                    <TableCell className="font-medium">{cliente.nome}</TableCell>
-                    <TableCell>{cliente.email || '-'}</TableCell>
-                    <TableCell>{cliente.telefone || '-'}</TableCell>
-                    <TableCell>
-                      {new Date(cliente.created_at).toLocaleDateString('pt-BR')}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => abrirDialog(cliente)}
-                          title="Editar"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => deletarCliente(cliente.id)}
-                          title="Deletar"
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+            <div className="grid gap-3">
+              {clientes.map((cliente) => (
+                <div
+                  key={cliente.id}
+                  className="bg-gray-900/50 border border-gray-700 rounded-lg p-4 hover:border-purple-600/50 transition-all duration-200"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4 flex-1">
+                      <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-purple-600/20 border border-purple-600/30">
+                        <Plus className="h-5 w-5 text-purple-400" />
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      <div className="flex-1">
+                        <h3 className="text-white font-semibold text-lg">{cliente.nome}</h3>
+                        <div className="flex flex-wrap gap-3 mt-1 text-sm">
+                          {cliente.email && (
+                            <span className="text-blue-400">{cliente.email}</span>
+                          )}
+                          {cliente.telefone && (
+                            <span className="text-gray-400">{cliente.telefone}</span>
+                          )}
+                          <span className="text-gray-500">
+                            Cadastro: {new Date(cliente.created_at).toLocaleDateString('pt-BR')}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => abrirDialog(cliente)}
+                        title="Editar cliente"
+                        className="hover:bg-blue-500/10 hover:text-blue-400 transition-colors"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => deletarCliente(cliente.id)}
+                        title="Deletar cliente"
+                        className="hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>

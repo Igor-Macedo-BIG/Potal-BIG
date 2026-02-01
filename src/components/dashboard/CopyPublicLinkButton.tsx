@@ -19,7 +19,7 @@ export function CopyPublicLinkButton({ clienteSlug, clienteNome }: CopyPublicLin
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    const publicUrl = `${window.location.origin}/public-view/${clienteSlug}`;
+    const publicUrl = `${window.location.origin}/p/${clienteSlug}`;
     
     try {
       await navigator.clipboard.writeText(publicUrl);
