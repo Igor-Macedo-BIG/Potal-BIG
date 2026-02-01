@@ -4,7 +4,7 @@ import { useCliente } from '@/contexts/ClienteContext';
 import { ReactNode } from 'react';
 
 interface MetricaFilterProps {
-  metricaKey: keyof NonNullable<ReturnType<typeof useCliente>['clienteSelecionado']>['metricas_visiveis'];
+  metricaKey: string;
   children: ReactNode;
 }
 
