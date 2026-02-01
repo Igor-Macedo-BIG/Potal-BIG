@@ -53,8 +53,8 @@ export function ClienteProvider({ children }: { children: ReactNode }) {
 
       setClientes(data || []);
 
-      // Auto-selecionar primeiro cliente se não tiver nenhum selecionado
-      if (!clienteSelecionado && data && data.length > 0) {
+      // Auto-selecionar cliente do localStorage ou primeiro da lista
+      if (data && data.length > 0) {
         const ultimoClienteId = localStorage.getItem('ultimo_cliente_id');
         const cliente = ultimoClienteId 
           ? data.find(c => c.id === ultimoClienteId) || data[0]
