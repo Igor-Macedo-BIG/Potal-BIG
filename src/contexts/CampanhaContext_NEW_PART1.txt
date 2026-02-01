@@ -1,0 +1,121 @@
+'use client';
+
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import type { Campanha, MetricasAgregadas } from '@/types/hierarchical';
+import { useCliente } from './ClienteContext';
+
+export interface FiltroData {
+  tipo: 'hoje' | 'ontem' | 'semana' | 'mes' | 'mes-passado' | 'trimestre' | 'ano' | 'personalizado';
+  dataInicio: string;
+  dataFim: string;
+}
+
+interface CampanhaContextType {
+  campanhaAtiva: Campanha | null;
+  metricasCampanha: MetricasAgregadas | null;
+  metricasGerais: MetricasAgregadas | null;
+  loading: boolean;
+  filtroData: FiltroData;
+  filtroHierarquico: { tipo: 'funil' | 'campanha' | 'publico' | 'criativo' | null; id: string | null } | null;
+  selecionarCampanha: (campanha: Campanha | null) => void;
+  limparSelecao: () => void;
+  limparMetricasCampanha: () => void;
+  atualizarFiltroData: (filtro: FiltroData) => void;
+  recarregarMetricas: () => void;
+  buscarMetricasPorFunil: (funilId: string, filtro?: FiltroData) => Promise<void>;
+  buscarMetricasPorPublico: (publicoId: string, filtro?: FiltroData) => Promise<void>;
+  buscarMetricasPorCriativo: (criativoId: string, filtro?: FiltroData) => Promise<void>;
+}
+
+const CampanhaContext = createContext<CampanhaContextType | undefined>(undefined);
+
+export function useCampanhaContext() {
+  const context = useContext(CampanhaContext);
+  if (!context) {
+    throw new Error('useCampanhaContext deve ser usado dentro do CampanhaProvider');
+  }
+  return context;
+}
+
+interface CampanhaProviderProps {
+  children: React.ReactNode;
+}
+
+export function CampanhaProvider({ children }: CampanhaProviderProps) {
+  const { clienteSelecionado } = useCliente();
+  const [campanhaAtiva, setCampanhaAtiva] = useState<Campanha | null>(null);
+  const [metricasCampanha, setMetricasCampanha] = useState<MetricasAgregadas | null>(null);
+  const [metricasGerais, setMetricasGerais] = useState<MetricasAgregadas | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [filtroHierarquico, setFiltroHierarquico] = useState<{ tipo: 'funil' | 'campanha' | 'publico' | 'criativo' | null; id: string | null } | null>(null);
+  
+  const [filtroData, setFiltroData] = useState<FiltroData>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const raw = localStorage.getItem('filtroData');
+        if (raw) return JSON.parse(raw) as FiltroData;
+      }
+    } catch (err) {
+      // ignore parse errors
+    }
+    const hoje = new Date().toISOString().split('T')[0];
+    return {
+      tipo: 'mes',
+      dataInicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+      dataFim: hoje
+    };
+  });
+
+  // Carregar campanha ativa do localStorage se existir
+  useEffect(() => {
+    if (!clienteSelecionado) {
+      console.log(' Nenhum cliente selecionado - limpando dados');
+      setCampanhaAtiva(null);
+      setMetricasCampanha(null);
+      setMetricasGerais(null);
+      return;
+    }
+
+    console.log(' Filtrando por cliente:', clienteSelecionado?.nome);
+
+    try {
+      if (typeof window !== 'undefined') {
+        const raw = localStorage.getItem('campanhaAtivaId');
+        if (raw) {
+          (async () => {
+            try {
+              const { data, error } = await supabase
+                .from('campanhas')
+                .select('*')
+                .eq('id', raw)
+                .eq('cliente_id', clienteSelecionado.id)
+                .limit(1)
+                .maybeSingle();
+
+              if (error) {
+                console.error('Erro ao carregar campanha do localStorage:', error);
+                return;
+              }
+
+              if (data) {
+                setCampanhaAtiva(data as Campanha);
+                buscarMetricasCampanha((data as Campanha).id);
+              }
+            } catch (err) {
+              console.error('Erro ao buscar campanha por id:', err);
+            }
+          })();
+        }
+      }
+    } catch (err) {
+      // ignore
+    }
+  }, [clienteSelecionado]);
+
+  // Carregar métricas gerais quando não há campanha selecionada
+  useEffect(() => {
+    if (!campanhaAtiva && clienteSelecionado) {
+      buscarMetricasGerais();
+    }
+  }, [clienteSelecionado]);

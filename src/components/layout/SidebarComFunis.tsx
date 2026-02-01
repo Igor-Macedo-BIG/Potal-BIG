@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/lib/supabase';
 import { useCampanhaContext } from '@/contexts/CampanhaContext';
+import { useCliente } from '@/contexts/ClienteContext';
+import ClienteSelector from '@/components/ClienteSelector';
 import ModalCriarFunil from '@/components/modals/ModalCriarFunil';
 import ModalCriarCampanha from '@/components/modals/ModalCriarCampanha';
 import ModalCriacaoAninhada from '@/components/modals/ModalCriacaoAninhada';
@@ -51,6 +53,7 @@ export function SidebarComFunis({ empresaNome }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { selecionarCampanha, campanhaAtiva } = useCampanhaContext();
+  const { clienteSelecionado } = useCliente();
   const [funis, setFunis] = useState<Funil[]>([]);
   const [campanhasPorFunil, setCampanhasPorFunil] = useState<Record<string, Campanha[]>>({});
   const [funisExpandidos, setFunisExpandidos] = useState<Set<string>>(new Set());
@@ -61,14 +64,14 @@ export function SidebarComFunis({ empresaNome }: SidebarProps) {
   useEffect(() => {
     carregarFunis();
     carregarUserRole();
-  }, []);
+  }, [clienteSelecionado]);
 
   const carregarUserRole = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: userData } = await supabase
-          .from('users')
+          .from('usuarios')
           .select('role')
           .eq('id', user.id)
           .single();
@@ -84,13 +87,22 @@ export function SidebarComFunis({ empresaNome }: SidebarProps) {
   };
 
   const carregarFunis = async () => {
+    if (!clienteSelecionado) {
+      console.log('🎯 Nenhum cliente selecionado, limpando funis');
+      setFunis([]);
+      setCampanhasPorFunil({});
+      setLoading(false);
+      return;
+    }
+
+    console.log('🎯 Filtrando por cliente:', clienteSelecionado.nome);
     setLoading(true);
     try {
-      // Carregar funis diretamente do Supabase
+      // Carregar funis diretamente do Supabase filtrados por cliente
       const { data: funis, error: errorFunis } = await supabase
         .from('funis')
         .select('*')
-        .eq('empresa_id', '550e8400-e29b-41d4-a716-446655440000')
+        .eq('cliente_id', clienteSelecionado.id)
         .order('created_at', { ascending: false });
 
       if (errorFunis) {
@@ -268,6 +280,11 @@ export function SidebarComFunis({ empresaNome }: SidebarProps) {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Seletor de Cliente */}
+      <div className="px-4 py-3 border-b border-slate-700/50">
+        <ClienteSelector />
       </div>
 
       {/* Navegação */}

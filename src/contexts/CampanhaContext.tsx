@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { Campanha, MetricasAgregadas } from '@/types/hierarchical';
+import { useCliente } from './ClienteContext';
 
 export interface FiltroData {
   tipo: 'hoje' | 'ontem' | 'semana' | 'mes' | 'mes-passado' | 'trimestre' | 'ano' | 'personalizado';
@@ -42,6 +43,7 @@ interface CampanhaProviderProps {
 }
 
 export function CampanhaProvider({ children }: CampanhaProviderProps) {
+  const { clienteSelecionado } = useCliente();
   const [campanhaAtiva, setCampanhaAtiva] = useState<Campanha | null>(null);
   const [metricasCampanha, setMetricasCampanha] = useState<MetricasAgregadas | null>(null);
   const [metricasGerais, setMetricasGerais] = useState<MetricasAgregadas | null>(null);
@@ -68,6 +70,16 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
 
   // Carregar campanha ativa do localStorage se existir
   useEffect(() => {
+    if (!clienteSelecionado) {
+      console.log(' Nenhum cliente selecionado - limpando dados');
+      setCampanhaAtiva(null);
+      setMetricasCampanha(null);
+      setMetricasGerais(null);
+      return;
+    }
+
+    console.log(' Filtrando por cliente:', clienteSelecionado?.nome);
+
     try {
       if (typeof window !== 'undefined') {
         const raw = localStorage.getItem('campanhaAtivaId');
@@ -79,6 +91,7 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
                 .from('campanhas')
                 .select('*')
                 .eq('id', raw)
+                .eq('cliente_id', clienteSelecionado.id)
                 .limit(1)
                 .maybeSingle();
 
@@ -104,11 +117,20 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
   }, []);
 
   // Carregar métricas gerais inicialmente (quando não há campanha selecionada)
+  // E recarregar quando o cliente selecionado mudar
   useEffect(() => {
-    if (!campanhaAtiva) {
+    // LIMPAR campanha ativa e suas métricas ao mudar de cliente
+    setCampanhaAtiva(null);
+    setMetricasCampanha(null);
+    
+
+    // Recarregar métricas SOMENTE se houver cliente
+    if (clienteSelecionado) {
       buscarMetricasGerais();
+    } else {
+      setMetricasGerais({ investimento: 0, faturamento: 0, roas: 0, leads: 0, vendas: 0 });
     }
-  }, []);
+  }, [clienteSelecionado]);
 
   const buscarMetricasCampanha = async (campanhaId: string, filtro?: FiltroData) => {
     setLoading(true);
@@ -322,41 +344,47 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
     });
 
     try {
-      // Buscar métricas de TODOS os níveis: funil, campanha, publico, criativo
-      const queries = [
-        // Funis
-        supabase
-          .from('metricas')
-          .select('*')
-          .eq('tipo', 'funil')
-          .gte('periodo_inicio', filtroAtual.dataInicio)
-          .lte('periodo_inicio', filtroAtual.dataFim),
-        
-        // Campanhas
-        supabase
-          .from('metricas')
-          .select('*')
-          .eq('tipo', 'campanha')
-          .gte('periodo_inicio', filtroAtual.dataInicio)
-          .lte('periodo_inicio', filtroAtual.dataFim),
-        
-        // Públicos
-        supabase
-          .from('metricas')
-          .select('*')
-          .eq('tipo', 'publico')
-          .gte('periodo_inicio', filtroAtual.dataInicio)
-          .lte('periodo_inicio', filtroAtual.dataFim),
-        
-        // Criativos
-        supabase
-          .from('metricas')
-          .select('*')
-          .eq('tipo', 'criativo')
-          .gte('periodo_inicio', filtroAtual.dataInicio)
-          .lte('periodo_inicio', filtroAtual.dataFim)
-      ];
+      // Construir queries com filtro de cliente
+      let queryFunis = supabase
+        .from('metricas')
+        .select('*')
+        .eq('tipo', 'funil')
+        .gte('periodo_inicio', filtroAtual.dataInicio)
+        .lte('periodo_inicio', filtroAtual.dataFim);
+      
+      let queryCampanhas = supabase
+        .from('metricas')
+        .select('*')
+        .eq('tipo', 'campanha')
+        .gte('periodo_inicio', filtroAtual.dataInicio)
+        .lte('periodo_inicio', filtroAtual.dataFim);
+      
+      let queryPublicos = supabase
+        .from('metricas')
+        .select('*')
+        .eq('tipo', 'publico')
+        .gte('periodo_inicio', filtroAtual.dataInicio)
+        .lte('periodo_inicio', filtroAtual.dataFim);
+      
+      let queryCriativos = supabase
+        .from('metricas')
+        .select('*')
+        .eq('tipo', 'criativo')
+        .gte('periodo_inicio', filtroAtual.dataInicio)
+        .lte('periodo_inicio', filtroAtual.dataFim);
+      
+      // Adicionar filtro de cliente se houver um selecionado
+      if (clienteSelecionado) {
+        console.log('✅ Filtrando métricas por cliente:', clienteSelecionado.nome, '| ID:', clienteSelecionado.id);
+        queryFunis = queryFunis.eq('cliente_id', clienteSelecionado.id);
+        queryCampanhas = queryCampanhas.eq('cliente_id', clienteSelecionado.id);
+        queryPublicos = queryPublicos.eq('cliente_id', clienteSelecionado.id);
+        queryCriativos = queryCriativos.eq('cliente_id', clienteSelecionado.id);
+      } else {
+        console.warn('⚠️ NENHUM CLIENTE SELECIONADO - Buscando todas as métricas (pode estar errado!)');
+      }
 
+      const queries = [queryFunis, queryCampanhas, queryPublicos, queryCriativos];
       // Executar todas as queries em paralelo
       const results = await Promise.all(queries);
       

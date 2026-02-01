@@ -17,6 +17,7 @@ import { Calendar, Edit3, Loader2, TrendingUp, Users, MousePointer, Target, Doll
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import type { Campanha } from '@/types/hierarchical';
+import { useCliente } from '@/contexts/ClienteContext';
 
 interface Props {
   open: boolean;
@@ -48,6 +49,7 @@ export default function ModalEditarMetricas({
   filtrosIniciais,
   dataInicial
 }: Props) {
+  const { clienteSelecionado } = useCliente();
   const [loading, setLoading] = useState(false);
   const [funis, setFunis] = useState<any[]>([]);
   const [campanhasList, setCampanhasList] = useState<any[]>([]);
@@ -487,7 +489,7 @@ export default function ModalEditarMetricas({
         setMonthlyStart(toISO(inicio));
       }
       if (!monthlyEnd) {
-        const base = new Date(formData.data);
+        const base = parseISO(formData.data);
         const hoje = new Date();
         const fimMes = new Date(base.getFullYear(), base.getMonth() + 1, 0);
         const dataFinal = (base.getFullYear() === hoje.getFullYear() && base.getMonth() === hoje.getMonth()) ? hoje : fimMes;
@@ -515,17 +517,25 @@ export default function ModalEditarMetricas({
   // Auto-preencher monthlyEnd quando monthlyStart mudar (mensal)
   useEffect(() => {
     if (tipoDistribuicao === 'mensal' && monthlyStart) {
-      const dataInicio = new Date(monthlyStart);
+      const dataInicio = parseISO(monthlyStart);
       const hoje = new Date();
-      const fimMes = new Date(dataInicio.getFullYear(), dataInicio.getMonth() + 1, 0);
       
-      // Se for o mês atual, usar hoje como fim, senão usar último dia do mês
-      const dataFinal = (dataInicio.getFullYear() === hoje.getFullYear() && dataInicio.getMonth() === hoje.getMonth()) 
-        ? hoje 
-        : fimMes;
+      // Zerar as horas para comparação apenas de datas
+      hoje.setHours(0, 0, 0, 0);
       
+      // Pegar o mês e ano da data de início selecionada
+      const mesInicio = dataInicio.getMonth();
+      const anoInicio = dataInicio.getFullYear();
+      
+      // Calcular o último dia do mês selecionado (não do mês seguinte!)
+      const fimMes = new Date(anoInicio, mesInicio + 1, 0);
+      fimMes.setHours(0, 0, 0, 0);
+      
+      // Se o mês selecionado já passou completamente, usa o último dia do mês
+      // Se ainda estamos no mês selecionado, usa hoje
+      const dataFinal = fimMes < hoje ? fimMes : hoje;
       const dataFimISO = dataFinal.toISOString().split('T')[0];
-      
+
       if (monthlyEnd !== dataFimISO) {
         setMonthlyEnd(dataFimISO);
       }
@@ -1318,6 +1328,7 @@ export default function ModalEditarMetricas({
         return {
           tipo: tipo,
           referencia_id: referenciaId,
+          cliente_id: clienteSelecionado?.id || null,
           periodo_inicio: data,
           periodo_fim: data,
           alcance: alcanceFinal,

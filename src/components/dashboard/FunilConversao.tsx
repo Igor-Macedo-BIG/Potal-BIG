@@ -7,6 +7,7 @@ import { Users, Eye, MousePointer, ExternalLink, UserCheck, ShoppingCart, Crown,
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { MetricaFilter } from '@/components/public/MetricaFilter';
 
 interface FunilEtapa {
   id: string;
@@ -527,17 +528,18 @@ export function FunilConversao() {
       </CardHeader>
 
       <CardContent className="space-y-3">
-        {/* Layout Horizontal - Cards lado a lado */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7 gap-3">
+        {/* Layout Horizontal - 2 colunas no mobile (último sozinho expande), expansivo no desktop */}
+        <div className="grid grid-cols-2 [&>*:last-child:nth-child(odd)]:col-span-2 md:grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
           {etapas.map((etapa, index) => {
             const Icone = etapa.icone;
-            
+
             return (
-              <div key={etapa.id} className="relative group">
+              <MetricaFilter key={etapa.id} metricaKey={etapa.id}>
+                <div className="relative group">
                 {/* Card Principal */}
                 <div className={cn(
                   'relative p-3 rounded-lg border-2 transition-all duration-300 hover:scale-105',
-                  'backdrop-blur-sm shadow-lg hover:shadow-2xl min-h-[150px]',
+                  'backdrop-blur-sm shadow-lg hover:shadow-2xl min-h-[180px] flex flex-col',
                   etapa.corFundo,
                   etapa.isKPI ? 'ring-2 ring-yellow-400/40' : ''
                 )}>
@@ -622,7 +624,7 @@ export function FunilConversao() {
                   </div>
 
                   {/* Taxa de Conversão */}
-                  {index > 0 && (
+                  {index > 0 ? (
                     <div className="text-center">
                       <div className="text-[9px] text-slate-400 uppercase tracking-wider mb-1 font-bold">
                         Conv
@@ -667,6 +669,9 @@ export function FunilConversao() {
                         </div>
                       )}
                     </div>
+                  ) : (
+                    // Espaçador para manter altura uniforme quando não tem conversão
+                    <div className="text-center h-[72px]"></div>
                   )}
 
                   {/* Efeito de brilho para KPIs */}
@@ -683,7 +688,8 @@ export function FunilConversao() {
                     </div>
                   </div>
                 )}
-              </div>
+                </div>
+              </MetricaFilter>
             );
           })}
         </div>

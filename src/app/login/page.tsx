@@ -8,12 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { 
-  Shield, 
-  Briefcase, 
-  HeadphonesIcon, 
-  Phone, 
-  Handshake, 
-  Share2,
   Sparkles,
   ArrowRight,
   Lock,
@@ -22,66 +16,10 @@ import {
   EyeOff
 } from 'lucide-react';
 
-type UserRole = 'admin' | 'gestor' | 'cs' | 'sdr' | 'closer' | 'social-seller';
-
-interface RoleOption {
-  value: UserRole;
-  label: string;
-  icon: any;
-  color: string;
-  gradient: string;
-}
-
-const roles: RoleOption[] = [
-  {
-    value: 'admin',
-    label: 'Administrador',
-    icon: Shield,
-    color: 'from-purple-600 to-pink-600',
-    gradient: 'bg-gradient-to-br from-purple-500/20 to-pink-500/20'
-  },
-  {
-    value: 'gestor',
-    label: 'Gestor de Marketing',
-    icon: Briefcase,
-    color: 'from-blue-600 to-cyan-600',
-    gradient: 'bg-gradient-to-br from-blue-500/20 to-cyan-500/20'
-  },
-  {
-    value: 'cs',
-    label: 'Customer Success',
-    icon: HeadphonesIcon,
-    color: 'from-green-600 to-emerald-600',
-    gradient: 'bg-gradient-to-br from-green-500/20 to-emerald-500/20'
-  },
-  {
-    value: 'sdr',
-    label: 'SDR',
-    icon: Phone,
-    color: 'from-orange-600 to-yellow-600',
-    gradient: 'bg-gradient-to-br from-orange-500/20 to-yellow-500/20'
-  },
-  {
-    value: 'closer',
-    label: 'Closer',
-    icon: Handshake,
-    color: 'from-red-600 to-rose-600',
-    gradient: 'bg-gradient-to-br from-red-500/20 to-rose-500/20'
-  },
-  {
-    value: 'social-seller',
-    label: 'Social Seller',
-    icon: Share2,
-    color: 'from-indigo-600 to-purple-600',
-    gradient: 'bg-gradient-to-br from-indigo-500/20 to-purple-500/20'
-  }
-];
-
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
-  const [roleSelected, setRoleSelected] = useState<UserRole | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -94,14 +32,8 @@ export default function LoginPage() {
       return;
     }
 
-    if (!roleSelected) {
-      toast.error('Selecione seu tipo de acesso');
-      return;
-    }
-
     setLoading(true);
     console.log('📧 Email:', email);
-    console.log('🎯 Role selecionado:', roleSelected);
 
     try {
       // 1. Autenticar com Supabase
@@ -137,10 +69,10 @@ export default function LoginPage() {
 
       console.log('✅ Autenticado! User ID:', authData.user.id);
 
-      // 2. Buscar dados do usuário na tabela users
-      console.log('📊 Buscando dados na tabela users...');
+      // 2. Buscar dados do usuário na tabela usuarios
+      console.log('📊 Buscando dados na tabela usuarios...');
       const { data: userData, error: userError } = await supabase
-        .from('users')
+        .from('usuarios')
         .select('*')
         .eq('id', authData.user.id)
         .single();
@@ -154,7 +86,7 @@ export default function LoginPage() {
       }
 
       if (!userData) {
-        console.error('❌ Usuário não encontrado na tabela users');
+        console.error('❌ Usuário não encontrado na tabela usuarios');
         toast.error('Perfil não encontrado no sistema. Entre em contato com o administrador.');
         await supabase.auth.signOut();
         setLoading(false);
@@ -163,63 +95,23 @@ export default function LoginPage() {
 
       console.log('✅ Dados encontrados:', userData);
 
-      // 3. Verificar se o role corresponde
-      if (userData.role !== roleSelected) {
-        console.error('❌ Role não corresponde:', userData.role, 'vs', roleSelected);
-        toast.error(`Este usuário não tem acesso como ${roles.find(r => r.value === roleSelected)?.label}`);
-        await supabase.auth.signOut();
-        setLoading(false);
-        return;
-      }
-
-      // 4. Verificar se está ativo
-      if (!userData.ativo) {
-        console.error('❌ Usuário inativo');
-        toast.error('Usuário inativo. Entre em contato com o administrador.');
-        await supabase.auth.signOut();
-        setLoading(false);
-        return;
-      }
-
-      // 5. Salvar role no localStorage
+      // 3. Salvar dados no localStorage
       console.log('💾 Salvando no localStorage...');
-      localStorage.setItem('user-role', userData.role);
+      localStorage.setItem('user-role', userData.papel);
       localStorage.setItem('user-name', userData.nome);
 
       console.log('🎉 Login bem-sucedido!');
       toast.success(`Bem-vindo(a), ${userData.nome}!`);
 
-      // 6. Redirecionar baseado no role
-      console.log('🔄 Redirecionando para:', userData.role);
+      // 4. Redirecionar baseado no papel
+      console.log('🔄 Redirecionando para:', userData.papel);
       setTimeout(() => {
-        switch (userData.role) {
-          case 'admin':
-            console.log('➡️ Redirecionando para /admin');
-            router.push('/admin');
-            break;
-          case 'gestor':
-            console.log('➡️ Redirecionando para /admin (gestor)');
-            router.push('/admin'); // Gestor também tem acesso ao admin
-            break;
-          case 'cs':
-            console.log('➡️ Redirecionando para /cs');
-            router.push('/cs');
-            break;
-          case 'sdr':
-            console.log('➡️ Redirecionando para /sdr');
-            router.push('/sdr');
-            break;
-          case 'closer':
-            console.log('➡️ Redirecionando para /closer');
-            router.push('/closer');
-            break;
-          case 'social-seller':
-            console.log('➡️ Redirecionando para /social-seller');
-            router.push('/social-seller');
-            break;
-          default:
-            console.log('➡️ Redirecionando para /');
-            router.push('/');
+        if (userData.papel === 'admin' || userData.papel === 'gestor') {
+          console.log('➡️ Redirecionando para /admin');
+          router.push('/admin');
+        } else {
+          console.log('➡️ Redirecionando para /');
+          router.push('/');
         }
       }, 1000);
 
@@ -274,14 +166,14 @@ export default function LoginPage() {
 
             <h1 className="text-5xl md:text-7xl font-bold">
               <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent animate-gradient">
-                PORTAL
+                PORTAL DO TRÁFEGO
               </span>
               <br />
-              <span className="text-white">LÍDIA CABRAL</span>
+              <span className="text-white">IGOR MACEDO</span>
             </h1>
 
             <p className="text-xl text-gray-300 max-w-md">
-              Sistema integrado de gestão de tráfego pago, funis e equipes comerciais.
+              Sistema de gestão de tráfego pago e análise de métricas.
             </p>
 
             <div className="flex flex-wrap gap-4 justify-center md:justify-start">
@@ -301,47 +193,10 @@ export default function LoginPage() {
             <div className="bg-gray-900/40 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 shadow-2xl">
               <div className="text-center mb-8">
                 <h2 className="text-3xl font-bold text-white mb-2">Acesse sua conta</h2>
-                <p className="text-gray-400">Selecione seu tipo de acesso abaixo</p>
+                <p className="text-gray-400">Digite seu email e senha</p>
               </div>
 
               <form onSubmit={handleLogin} className="space-y-6">
-                {/* Role Selection */}
-                <div>
-                  <Label className="text-white mb-3 block">Tipo de Acesso</Label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {roles.map((role) => {
-                      const Icon = role.icon;
-                      const isSelected = roleSelected === role.value;
-                      return (
-                        <button
-                          key={role.value}
-                          type="button"
-                          onClick={() => setRoleSelected(role.value)}
-                          className={`relative p-4 rounded-xl border-2 transition-all ${
-                            isSelected
-                              ? 'border-purple-500 bg-purple-500/20 scale-105'
-                              : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'
-                          }`}
-                        >
-                          <div className="flex flex-col items-center gap-2">
-                            <div className={`h-10 w-10 rounded-lg bg-gradient-to-br ${role.color} flex items-center justify-center`}>
-                              <Icon className="h-5 w-5 text-white" />
-                            </div>
-                            <span className="text-xs text-white font-medium text-center">
-                              {role.label}
-                            </span>
-                          </div>
-                          {isSelected && (
-                            <div className="absolute -top-1 -right-1 h-4 w-4 bg-purple-500 rounded-full flex items-center justify-center">
-                              <div className="h-2 w-2 bg-white rounded-full"></div>
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
                 {/* Email */}
                 <div>
                   <Label className="text-white mb-2 block">Email</Label>

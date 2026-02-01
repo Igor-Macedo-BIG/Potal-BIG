@@ -1,8 +1,9 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import { ChevronDown, Filter, X, Check } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useCliente } from '@/contexts/ClienteContext';
 
 interface FilterOption {
   id: string;
@@ -23,6 +24,8 @@ interface Props {
 }
 
 export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
+  const { clienteSelecionado } = useCliente();
+  
   // Carregar filtros do localStorage
   const [filters, setFilters] = useState<FilterState>(() => {
     try {
@@ -62,38 +65,52 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
     }
   }, []); // Executar apenas na montagem
 
-  // Carregar funis do Supabase
+  // ✅ CONSOLIDADO: Gerenciar TUDO quando cliente mudar
   useEffect(() => {
-    const timer = setTimeout(() => {
-      carregarFunis();
-    }, 1000); // Aguardar 1 segundo para garantir que outros componentes carregaram
+    if (clienteSelecionado) {
+      console.log('🔄 Cliente mudou, limpando e recarregando...');
+      
+      // 1. Limpar filtros
+      setFilters({
+        funil: null,
+        campanha: null,
+        publico: null,
+        criativo: null,
+      });
 
-    return () => clearTimeout(timer);
-  }, []);
+      // 2. Carregar dados (sem limpar antes - deixa a query preencher)
+      const timer = setTimeout(() => {
+        carregarFunis();
+        carregarCampanhas('');
+        carregarPublicos('');
+        carregarCriativos('');
+      }, 100); // Pequeno delay para evitar race condition
 
-  // Carregar campanhas quando funil é selecionado
-  useEffect(() => {
-    if (filters.funil) {
-      carregarCampanhas(filters.funil.id);
+      return () => clearTimeout(timer);
     } else {
+      // Cliente desmarcado - limpar tudo
       setCampanhas([]);
-    }
-  }, [filters.funil]);
-
-  // Carregar públicos quando campanha é selecionada
-  useEffect(() => {
-    if (filters.campanha) {
-      carregarPublicos(filters.campanha.id);
-      // Só carrega criativos se NÃO tiver público selecionado
-      if (!filters.publico) {
-        carregarCriativos(filters.campanha.id);
-      }
-    } else {
       setPublicos([]);
       setCriativos([]);
     }
-  }, [filters.campanha]);
+  }, [clienteSelecionado]);
 
+
+  //  Recarregar campanhas quando FUNIL mudar
+  useEffect(() => {
+    if (filters.funil && clienteSelecionado) {
+      console.log(' Funil mudou, recarregando campanhas filtradas...', {
+        funil: filters.funil.name,
+        funilId: filters.funil.id
+      });
+      carregarCampanhas(filters.funil.id);
+      carregarPublicos('');
+      carregarCriativos('');
+    } else if (!filters.funil && clienteSelecionado) {
+      console.log(' Funil desmarcado, mostrando todas campanhas do cliente');
+      carregarCampanhas('');
+    }
+  }, [filters.funil, clienteSelecionado]);
   // Carregar criativos quando público é selecionado
   useEffect(() => {
     if (filters.publico) {
@@ -121,19 +138,26 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
       console.log('Erro ao buscar todos os funis:', errorTodos);
 
       // Agora carregar funis igual ao SidebarComFunis
-      const { data: funisData, error: errorFunis } = await supabase
+      let query = supabase
         .from('funis')
         .select('*')
-        .eq('empresa_id', '550e8400-e29b-41d4-a716-446655440000')
-        .order('created_at', { ascending: false });
+        .eq('empresa_id', '550e8400-e29b-41d4-a716-446655440000');
+      
+      // Filtrar por cliente se houver um selecionado
+      if (clienteSelecionado) {
+        console.log('✅ Filtrando funis por cliente:', clienteSelecionado.nome);
+        query = query.eq('cliente_id', clienteSelecionado.id);
+      }
+      
+      const { data: funisData, error: errorFunis } = await query.order('created_at', { ascending: false });
 
       if (errorFunis) {
         console.error('Erro ao carregar funis (FiltrosCascata):', errorFunis);
         // Usar dados de exemplo em caso de erro
         const funisExemplo = [
           { id: 'exemplo-1', name: 'Funil Masterclass (Demo)', count: 3 },
-          { id: 'exemplo-2', name: 'Funil Aplicação (Demo)', count: 2 },
-          { id: 'exemplo-3', name: 'Funil Captação (Demo)', count: 5 },
+          { id: 'exemplo-2', name: 'Funil Aplicaçeo (Demo)', count: 2 },
+          { id: 'exemplo-3', name: 'Funil Captaçeo (Demo)', count: 5 },
         ];
         setFunis(funisExemplo);
         return;
@@ -143,7 +167,7 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
       
       let funisParaUsar = funisData;
       
-      // Se não encontrou com empresa_id, tentar todos os funis
+      // Se neo encontrou com empresa_id, tentar todos os funis
       if (!funisData || funisData.length === 0) {
         console.log('Nenhum funil encontrado com empresa_id, tentando buscar todos...');
         funisParaUsar = todosFunis || [];
@@ -175,12 +199,12 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
 
       console.log('Funis formatados para filtros:', funisFormatados);
       
-      // Se não há funis no banco, usar dados de exemplo baseados nos funis do sistema
+      // Se neo há funis no banco, usar dados de exemplo baseados nos funis do sistema
       if (funisFormatados.length === 0) {
         const funisExemplo = [
           { id: 'real-1', name: 'Funil de Vendas Lídia Cabral', count: 3 },
-          { id: 'real-2', name: 'Funil de Captação', count: 2 },
-          { id: 'real-3', name: 'Funil de Reativação', count: 5 },
+          { id: 'real-2', name: 'Funil de Captaçeo', count: 2 },
+          { id: 'real-3', name: 'Funil de Reativaçeo', count: 5 },
           { id: 'real-4', name: 'Funil Masterclass', count: 1 },
         ];
         console.log('Nenhum funil encontrado no Supabase, usando funis de exemplo baseados no sistema:', funisExemplo);
@@ -198,141 +222,112 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
 
   const carregarCampanhas = async (funilId: string) => {
     try {
-      const { data: campanhasData, error } = await supabase
+      console.log(' Carregando campanhas...', { funilId, cliente: clienteSelecionado?.nome });
+      
+      //  BUSCAR campanhas com DOIS filtros:
+      // 1. Por funil_id (se selecionado)
+      // 2. Por cliente_id (sempre)
+      
+      let query = supabase
         .from('campanhas')
-        .select('id, nome')
-        .eq('funil_id', funilId);
+        .select('id, nome, funil_id, cliente_id');
+      
+      //  SEMPRE filtrar por cliente
+      if (clienteSelecionado) {
+        query = query.eq('cliente_id', clienteSelecionado.id);
+      }
+      
+      //  Se tiver funil selecionado, filtrar tamb�m por funil
+      if (funilId) {
+        query = query.eq('funil_id', funilId);
+      }
+      
+      const { data: campanhasData, error } = await query;
 
       if (error) {
-        console.error('Erro ao carregar campanhas:', error);
+        console.error(' Erro ao carregar campanhas:', error);
+        setCampanhas([]);
         return;
       }
+
+      console.log(' Campanhas encontradas:', {
+        total: campanhasData?.length || 0,
+        cliente: clienteSelecionado?.nome,
+        funil: funilId || 'todos',
+        campanhas: campanhasData
+      });
 
       const campanhasFormatadas = campanhasData?.map((campanha: any) => ({
         id: campanha.id,
         name: campanha.nome,
-        count: Math.floor(Math.random() * 1000) + 100 // Temporário até termos métricas reais
+        count: Math.floor(Math.random() * 1000) + 100
       })) || [];
 
-      console.log('Campanhas carregadas do Supabase:', campanhasFormatadas);
-      
-      // Se não há campanhas no banco, usar dados de exemplo baseados no funil
-      if (campanhasFormatadas.length === 0) {
-        const campanhasExemplo = [
-          { id: `exemplo-${funilId}-1`, name: 'Campanha Black Friday (Demo)', count: 1250 },
-          { id: `exemplo-${funilId}-2`, name: 'Campanha Lançamento (Demo)', count: 890 },
-          { id: `exemplo-${funilId}-3`, name: 'Campanha Evergreen (Demo)', count: 2100 },
-        ];
-        console.log('Usando campanhas de exemplo:', campanhasExemplo);
-        setCampanhas(campanhasExemplo);
-      } else {
-        setCampanhas(campanhasFormatadas);
-      }
+      console.log(' Campanhas formatadas:', campanhasFormatadas);
+
+      setCampanhas(campanhasFormatadas);
     } catch (error) {
-      console.error('Erro ao carregar campanhas:', error);
+      console.error(' Erro ao carregar campanhas:', error);
+      setCampanhas([]);
     }
   };
 
   const carregarPublicos = async (campanhaId: string) => {
     try {
-      // Buscar conjuntos de anúncio da campanha diretamente com o ID
-      const { data: conjuntos, error } = await supabase
-        .from('conjuntos_anuncio')
-        .select('id, publico, nome')
-        .eq('campanha_id', campanhaId);
+      // Buscar públicos independentes (neo relacionados à campanha)
+      let queryPublicos = supabase
+        .from('publicos')
+        .select('id, nome');
+
+      // Filtrar por cliente se houver um selecionado
+      if (clienteSelecionado) {
+        queryPublicos = queryPublicos.eq('cliente_id', clienteSelecionado.id);
+      }
+
+      const { data: publicos, error } = await queryPublicos;
 
       if (error) {
-        console.error('Erro ao buscar conjuntos da campanha para públicos:', error);
+        // Tabela publicos pode neo existir ainda, neo é erro crítico
+        console.log('ℹ️ Tabela publicos neo encontrada ou vazia');
         setPublicos([]);
         return;
       }
 
-      if (!conjuntos || conjuntos.length === 0) {
+      if (!publicos || publicos.length === 0) {
         setPublicos([]);
         return;
       }
 
-      // Normalizar e extrair públicos únicos (usando ID do conjunto_anuncio)
-      const mapaPublicos: Record<string, FilterOption> = {};
-      conjuntos.forEach((conjunto) => {
-        const publicoNome = conjunto?.publico || conjunto?.nome;
-        if (!publicoNome || !conjunto?.id) return;
+      // Formatar públicos
+      const publicosFormatados = publicos.map((publico: any) => ({
+        id: publico.id,
+        name: publico.nome,
+      }));
 
-        // Usar o ID do conjunto_anuncio como ID, e o nome/publico como name
-        const publicoStr = String(publicoNome);
-        mapaPublicos[conjunto.id] = { id: conjunto.id, name: publicoStr };
-      });
-
-      const listaPublicos = Object.values(mapaPublicos);
-
-      setPublicos(listaPublicos);
+      console.log('👥 Públicos carregados:', publicosFormatados);
+      setPublicos(publicosFormatados);
     } catch (error) {
-      console.error('Erro ao carregar públicos:', error);
+      // Neo logar como erro, apenas avisar
+      console.log('ℹ️ Públicos neo disponíveis');
       setPublicos([]);
     }
   };
 
   const carregarCriativosPorPublico = async (publicoId: string) => {
     try {
-      console.log('🎨 Carregando criativos do público:', publicoId);
-      
-      // Buscar anúncios apenas deste público específico
-      const { data: anunciosData, error: errorAnuncios } = await supabase
+      console.log('🎨 Carregando criativos (independentes de público)...');
+
+      // Buscar anúncios (independentes)
+      let queryAnuncios = supabase
         .from('anuncios')
-        .select('id, nome, tipo')
-        .eq('conjunto_anuncio_id', publicoId);
+        .select('id, nome');
 
-      if (errorAnuncios) {
-        console.error('Erro ao buscar anúncios do público:', errorAnuncios);
-        setCriativos([]);
-        return;
+      // Filtrar por cliente se houver um selecionado
+      if (clienteSelecionado) {
+        queryAnuncios = queryAnuncios.eq('cliente_id', clienteSelecionado.id);
       }
 
-      const mapaCriativos: Record<string, FilterOption> = {};
-
-      anunciosData?.forEach((anuncio) => {
-        if (!anuncio) return;
-        const id = anuncio.id;
-        const name = `${anuncio.nome}${anuncio.tipo ? ` (${anuncio.tipo})` : ''}`;
-        mapaCriativos[id] = { id, name };
-      });
-
-      setCriativos(Object.values(mapaCriativos));
-      console.log('✅ Criativos do público carregados:', Object.keys(mapaCriativos).length);
-    } catch (error) {
-      console.error('Erro ao carregar criativos do público:', error);
-      setCriativos([]);
-    }
-  };
-
-  const carregarCriativos = async (campanhaId: string) => {
-    try {
-      console.log('🎨 Carregando criativos da campanha:', campanhaId);
-      
-      // Buscar anúncios (criativos) através dos conjuntos de anúncio da campanha
-      const { data: conjuntosData, error: errorConjuntos } = await supabase
-        .from('conjuntos_anuncio')
-        .select('id')
-        .eq('campanha_id', campanhaId);
-
-      if (errorConjuntos) {
-        console.error('Erro ao buscar conjuntos da campanha:', errorConjuntos);
-        setCriativos([]);
-        return;
-      }
-
-      if (!conjuntosData || conjuntosData.length === 0) {
-        setCriativos([]);
-        return;
-      }
-
-      const conjuntoIds = conjuntosData.map(c => c.id);
-
-      // Buscar anúncios dos conjuntos
-      const { data: anunciosData, error: errorAnuncios } = await supabase
-        .from('anuncios')
-        .select('id, nome, tipo')
-        .in('conjunto_anuncio_id', conjuntoIds);
+      const { data: anunciosData, error: errorAnuncios } = await queryAnuncios;
 
       if (errorAnuncios) {
         console.error('Erro ao buscar anúncios:', errorAnuncios);
@@ -340,17 +335,53 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
         return;
       }
 
-      const mapaCriativos: Record<string, FilterOption> = {};
+      const criativosFormatados = anunciosData?.map((anuncio: any) => ({
+        id: anuncio.id,
+        name: anuncio.nome,
+      })) || [];
 
-      anunciosData?.forEach((anuncio) => {
-        if (!anuncio) return;
-        const id = anuncio.id;
-        const name = `${anuncio.nome}${anuncio.tipo ? ` (${anuncio.tipo})` : ''}`;
-        mapaCriativos[id] = { id, name };
-      });
+      console.log('✅ Criativos carregados:', criativosFormatados.length);
+      setCriativos(criativosFormatados);
+    } catch (error) {
+      console.error('Erro ao carregar criativos:', error);
+      setCriativos([]);
+    }
+  };
 
-      const listaCriativos = Object.values(mapaCriativos);
-      setCriativos(listaCriativos);
+  const carregarCriativos = async (campanhaId: string) => {
+    try {
+      console.log('🎨 Carregando anúncios (independentes de campanha)...');
+
+      // Buscar anúncios diretamente (neo relacionados a campanha)
+      let queryAnuncios = supabase
+        .from('anuncios')
+        .select('id, nome');
+
+      // Filtrar por cliente se houver um selecionado
+      if (clienteSelecionado) {
+        queryAnuncios = queryAnuncios.eq('cliente_id', clienteSelecionado.id);
+      }
+
+      const { data: anunciosData, error: errorAnuncios } = await queryAnuncios;
+
+      if (errorAnuncios) {
+        console.error('Erro ao buscar anúncios:', errorAnuncios);
+        setCriativos([]);
+        return;
+      }
+
+      if (!anunciosData || anunciosData.length === 0) {
+        setCriativos([]);
+        return;
+      }
+
+      const criativosFormatados = anunciosData.map((anuncio: any) => ({
+        id: anuncio.id,
+        name: anuncio.nome,
+      }));
+
+      console.log('✅ Criativos carregados:', criativosFormatados.length);
+      setCriativos(criativosFormatados);
     } catch (error) {
       console.error('Erro ao carregar criativos:', error);
       setCriativos([]);
@@ -428,62 +459,66 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
     options: FilterOption[],
     placeholder: string,
     disabled = false
-  ) => (
-    <div className="relative z-50" data-dropdown>
-      <button
-        onClick={() => setOpenDropdown(openDropdown === type ? null : type)}
-        disabled={disabled}
-        className={`
-          w-full flex items-center justify-between px-3 py-1.5 text-sm rounded-md border transition-all duration-200
-          ${disabled 
-            ? 'bg-slate-800/30 border-slate-700/30 text-slate-500 cursor-not-allowed' 
-            : 'bg-slate-800/50 border-slate-600/50 text-white hover:border-cyan-500/50 hover:bg-slate-700/50'
-          }
-          ${openDropdown === type ? 'border-cyan-500/70 bg-slate-700/50' : ''}
-        `}
-      >
-        <span className="text-xs truncate">
-          {filters[type]?.name || placeholder}
-        </span>
-        <ChevronDown className={`h-3.5 w-3.5 transition-transform flex-shrink-0 ${
-          openDropdown === type ? 'rotate-180' : ''
-        }`} />
-      </button>
+  ) => {
+    const isOpen = openDropdown === type;
+    
+    return (
+      <div className={`relative ${isOpen ? 'z-[9999]' : 'z-10'}`} data-dropdown>
+        <button
+          onClick={() => setOpenDropdown(openDropdown === type ? null : type)}
+          disabled={disabled}
+          className={`
+            w-full flex items-center justify-between px-3 sm:px-1.5 py-2 sm:py-0.5 text-sm sm:text-xs rounded-md border transition-all duration-200 h-11 sm:h-7 relative bg-slate-800
+            ${disabled
+              ? 'bg-slate-800/30 border-slate-700/30 text-slate-500 cursor-not-allowed'
+              : 'bg-slate-800 border-slate-600/50 text-white hover:border-cyan-500/50 hover:bg-slate-700/50 active:bg-slate-700'
+            }
+            ${isOpen ? 'border-cyan-500/70 bg-slate-700/50' : ''}
+          `}
+        >
+          <span className="text-sm sm:text-[11px] truncate">
+            {filters[type]?.name || placeholder}
+          </span>
+          <ChevronDown className={`h-4 w-4 sm:h-3 sm:w-3 transition-transform flex-shrink-0 ${
+            isOpen ? 'rotate-180' : ''
+          }`} />
+        </button>
 
-      {openDropdown === type && !disabled && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800/95 backdrop-blur-xl border border-slate-600/50 rounded-md shadow-2xl z-[9999] max-h-60 overflow-y-auto">
-          {options.map((option) => (
-            <button
-              key={option.id}
-              onClick={() => handleFilterSelect(type, option)}
-              className="w-full px-3 py-2 text-left text-xs text-white hover:bg-slate-700/50 transition-colors flex items-center justify-between group"
-            >
-              <span className="truncate">{option.name}</span>
-              {option.count && (
-                <span className="text-[10px] text-slate-400 group-hover:text-cyan-400 flex-shrink-0 ml-2">
-                  {option.count.toLocaleString()}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+        {isOpen && !disabled && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800/95 backdrop-blur-xl border border-slate-600/50 rounded-md shadow-2xl max-h-60 overflow-y-auto">
+            {options.map((option) => (
+              <button
+                key={option.id}
+                onClick={() => handleFilterSelect(type, option)}
+                className="w-full px-3 sm:px-2 py-2.5 sm:py-1 text-left text-sm sm:text-[11px] text-white hover:bg-slate-700/50 active:bg-slate-700 transition-colors flex items-center justify-between group"
+              >
+                <span className="truncate">{option.name}</span>
+                {option.count && (
+                  <span className="text-xs sm:text-[10px] text-slate-400 group-hover:text-cyan-400 flex-shrink-0 ml-2">
+                    {option.count.toLocaleString()}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
-    <div className={`space-y-2 relative z-50 ${className}`}>
-      <div className="flex items-center gap-1.5 mb-2">
-        <Filter className="h-3.5 w-3.5 text-purple-400" />
-        <h3 className="text-xs font-semibold text-slate-300">Filtros de Campanha</h3>
+    <div className={`space-y-2 relative ${className}`}>
+      <div className="flex items-center gap-1 mb-1.5">
+        <Filter className="h-4 sm:h-3 w-4 sm:w-3 text-purple-400" />
+        <h3 className="text-xs sm:text-[10px] font-semibold text-slate-300 tracking-tight">Filtros de Campanha</h3>
       </div>
 
       {/* Filtros em Grid Compacto */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 relative z-50">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-2 relative">
         
         {/* Funil */}
         <div>
-          <label className="block text-[10px] font-medium text-slate-400 mb-1">
+          <label className="block text-xs sm:text-[9px] font-medium text-slate-400 mb-1 sm:mb-0.5 tracking-tight">
             FUNIL
           </label>
           {renderDropdown('funil', funis, 'Todos os funis', loading)}
@@ -491,7 +526,7 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
 
         {/* Campanha */}
         <div>
-          <label className="block text-[10px] font-medium text-slate-400 mb-1">
+          <label className="block text-xs sm:text-[10px] font-medium text-slate-400 mb-1">
             CAMPANHA
           </label>
           {renderDropdown('campanha', campanhas, 'Todas campanhas', !filters.funil)}
@@ -499,7 +534,7 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
 
         {/* Público */}
         <div>
-          <label className="block text-[10px] font-medium text-slate-400 mb-1">
+          <label className="block text-xs sm:text-[10px] font-medium text-slate-400 mb-1">
             PÚBLICO
           </label>
           {renderDropdown('publico', publicos, 'Todos públicos', !filters.campanha)}
@@ -507,7 +542,7 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
 
         {/* Criativo */}
         <div>
-          <label className="block text-[10px] font-medium text-slate-400 mb-1">
+          <label className="block text-xs sm:text-[10px] font-medium text-slate-400 mb-1">
             CRIATIVO
           </label>
           {renderDropdown('criativo', criativos, 'Todos criativos', !filters.campanha)}
@@ -515,7 +550,7 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
 
       </div>
 
-      {/* Botão Limpar - Minimalista */}
+      {/* Boteo Limpar - Minimalista */}
       {(filters.funil || filters.campanha || filters.publico || filters.criativo) && (
         <div className="flex items-center justify-end">
           <button

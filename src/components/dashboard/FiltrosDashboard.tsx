@@ -143,27 +143,26 @@ export default function FiltrosDashboard({ onFiltroChange, filtroAtual, campanha
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-1.5 mb-2">
-        <Calendar className="h-3.5 w-3.5 text-cyan-400" />
-        <h3 className="text-xs font-semibold text-slate-300">Período</h3>
+      <div className="flex items-center gap-1 mb-1.5">
+        <Calendar className="h-3 w-3 text-cyan-400" />
+        <h3 className="text-[10px] font-semibold text-slate-300 tracking-tight">Período</h3>
       </div>
 
       <div className="flex flex-col gap-2">
         {/* Botões de período pré-definido - Compactos */}
         <div className="flex flex-wrap gap-1.5">
           {[
-            { valor: 'hoje', label: 'Hoje' },
-            { valor: 'ontem', label: 'Ontem' },
             { valor: 'semana', label: 'Semana' },
             { valor: 'mes', label: 'Mês' },
-            { valor: 'trimestre', label: '3M' },
+            { valor: 'mes-passado', label: 'Mês passado' },
+            { valor: 'personalizado', label: 'Custom' },
           ].map((opcao) => (
             <Button
               key={opcao.valor}
               variant="ghost"
               size="sm"
               className={cn(
-                "text-xs px-2 py-1 h-7 border transition-all duration-200",
+                "text-[11px] px-1.5 py-0.5 h-6 border transition-all duration-200",
                 filtroAtual.tipo === opcao.valor
                   ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
                   : "border-slate-600 text-slate-400 hover:border-slate-500 hover:text-white"
@@ -173,20 +172,6 @@ export default function FiltrosDashboard({ onFiltroChange, filtroAtual, campanha
               {opcao.label}
             </Button>
           ))}
-          
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "text-xs px-2 py-1 h-7 border transition-all duration-200",
-              filtroAtual.tipo === 'personalizado'
-                ? "bg-purple-500/20 text-purple-300 border-purple-500/40"
-                : "border-slate-600 text-slate-400 hover:border-slate-500 hover:text-white"
-            )}
-            onClick={() => handleTipoChange('personalizado')}
-          >
-            Custom
-          </Button>
         </div>
 
         {/* Campos de data personalizada - Inline */}
@@ -197,20 +182,20 @@ export default function FiltrosDashboard({ onFiltroChange, filtroAtual, campanha
               value={dataInicio}
               onChange={(e) => setDataInicio(e.target.value)}
               onBlur={handleCustomDateChange}
-              className="bg-slate-800 border-slate-600 text-white text-xs h-7 px-2"
+              className="bg-slate-800 border-slate-600 text-white text-[11px] h-6 px-1"
             />
             <Input
               type="date"
               value={dataFim}
               onChange={(e) => setDataFim(e.target.value)}
               onBlur={handleCustomDateChange}
-              className="bg-slate-800 border-slate-600 text-white text-xs h-7 px-2"
+              className="bg-slate-800 border-slate-600 text-white text-[11px] h-6 px-1"
             />
           </div>
         )}
 
         {/* Info do período - Minimalista */}
-        <div className="text-[10px] text-slate-500">
+        <div className="text-[9px] text-slate-500 tracking-tight">
           {filtroAtual.dataInicio.split('-').reverse().join('/')} → {filtroAtual.dataFim.split('-').reverse().join('/')}
         </div>
       </div>

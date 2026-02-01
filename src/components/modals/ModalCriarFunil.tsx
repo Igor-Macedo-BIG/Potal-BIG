@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Plus, Target, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { useCliente } from '@/contexts/ClienteContext';
 
 interface Props {
   onFunilCriado?: () => void;
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export default function ModalCriarFunil({ onFunilCriado, trigger }: Props) {
+  const { clienteSelecionado } = useCliente();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -47,8 +49,8 @@ export default function ModalCriarFunil({ onFunilCriado, trigger }: Props) {
         .from('funis')
         .insert({
           nome: formData.nome.trim(),
-          descricao: formData.descricao.trim() || null,
           empresa_id: '550e8400-e29b-41d4-a716-446655440000', // ID da empresa padrão
+          cliente_id: clienteSelecionado?.id || null,
         })
         .select()
         .single();

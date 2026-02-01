@@ -8,6 +8,7 @@ import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { Loader2 } from 'lucide-react'
+import { useCliente } from '@/contexts/ClienteContext'
 
 interface Campanha {
   id: string
@@ -32,23 +33,30 @@ interface FuturisticCampanhasTableProps {
 }
 
 export function FuturisticCampanhasTable({ dataInicio, dataFim }: FuturisticCampanhasTableProps) {
+  const { clienteSelecionado } = useCliente()
   const [campanhas, setCampanhas] = useState<CampanhaComMetricas[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     carregarCampanhas()
-  }, [dataInicio, dataFim])
+  }, [dataInicio, dataFim, clienteSelecionado])
 
   const carregarCampanhas = async () => {
     try {
       setLoading(true)
-      
-      // Buscar todas as campanhas
-      const { data: campanhasData, error: errorCampanhas } = await supabase
+
+      // Buscar campanhas filtradas por cliente
+      let query = supabase
         .from('campanhas')
         .select('*')
         .order('created_at', { ascending: false })
 
+      // Filtrar por cliente se houver um selecionado
+      if (clienteSelecionado) {
+        query = query.eq('cliente_id', clienteSelecionado.id)
+      }
+
+      const { data: campanhasData, error: errorCampanhas } = await query
       if (errorCampanhas) {
         console.error('Erro ao carregar campanhas:', errorCampanhas)
         return

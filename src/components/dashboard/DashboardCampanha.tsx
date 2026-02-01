@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useCampanhaContext } from '@/contexts/CampanhaContext';
+import { useCliente } from '@/contexts/ClienteContext';
 import { FuturisticMetricCard } from '@/components/dashboard/FuturisticMetricCard';
 import { FuturisticCampanhasTable } from '@/components/dashboard/FuturisticCampanhasTable';
 import { FuturisticCharts } from '@/components/dashboard/FuturisticCharts';
@@ -11,11 +12,14 @@ import { FiltrosCascata } from '@/components/dashboard/FiltrosCascata';
 import { InsightsCards } from '@/components/dashboard/InsightsCards';
 import { supabase } from '@/lib/supabase';
 import ModalEditarMetricas from '@/components/modals/ModalEditarMetricas';
+import { MetricaFilter } from '@/components/public/MetricaFilter';
+import ClienteSelector from '@/components/ClienteSelector';
 
 import { TrendingUp, Users, MousePointer, Target, Zap, Rocket, Brain, Star, Edit3, Plus, DollarSign, UserCheck, ShoppingCart, Megaphone, Phone, Handshake, HeadphonesIcon, Eye, BarChart3, Calendar, MessageCircle, Clock, Award, TrendingDown, Filter, Share2 } from 'lucide-react';
 
 // Componente de Abas dos Departamentos - Estilo Funil de Conversão
 function DashboardTabs() {
+  const { clienteSelecionado } = useCliente();
   const [activeTab, setActiveTab] = useState<'trafego' | 'sdr' | 'closer' | 'social-seller' | 'cs'>('trafego');
   const [metricasSdr, setMetricasSdr] = useState({
     comecou_diagnostico: 0,
@@ -29,13 +33,31 @@ function DashboardTabs() {
   // Carregar métricas SDR do banco
   useEffect(() => {
     const carregarMetricasSdr = async () => {
+      // Limpar métricas se não houver cliente selecionado
+      if (!clienteSelecionado) {
+        setMetricasSdr({
+          comecou_diagnostico: 0,
+          chegaram_crm_kommo: 0,
+          qualificados_mentoria: 0,
+          para_downsell: 0,
+          agendados_diagnostico: 0,
+          agendados_mentoria: 0
+        });
+        return;
+      }
+
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('metricas')
           .select('detalhe_sdr')
           .not('detalhe_sdr', 'is', null)
           .order('periodo_inicio', { ascending: false })
           .limit(30);
+
+        // Filtrar por cliente
+        query = query.eq('cliente_id', clienteSelecionado.id);
+
+        const { data, error } = await query;
 
         if (!error && data && data.length > 0) {
           // Agregar os valores
@@ -69,7 +91,7 @@ function DashboardTabs() {
     };
 
     carregarMetricasSdr();
-  }, []);
+  }, [clienteSelecionado]);
 
   const tabs = [
     { 
@@ -103,6 +125,24 @@ function DashboardTabs() {
       color: 'text-orange-400'
     },
   ];
+
+  // Mapeamento de nomes de métricas para as chaves usadas no banco
+  const metricaNomeParaChave: Record<string, string> = {
+    'Total de Leads': 'total_leads',
+    'Média Diária de Leads': 'media_diaria_leads',
+    'Custo por Lead': 'custo_por_lead',
+    'Investimento': 'investimento',
+    'Investimento Total': 'investimento',
+    'Impressões': 'impressoes',
+    'Alcance': 'alcance',
+    'Cliques': 'cliques',
+    'Visualizações': 'visualizacoes',
+    'Checkouts': 'checkouts',
+    'Leads': 'leads',
+    'Vendas': 'vendas',
+    'ROAS': 'roas',
+    'Faturamento': 'faturamento'
+  };
 
   // Dados detalhados por departamento seguindo as especificações
   const dadosDepartamento = {
@@ -215,12 +255,13 @@ function DashboardTabs() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {departamento.metricas.map((metrica, index) => {
             const IconeMetrica = metrica.icone;
-            
+            const metricaKey = metricaNomeParaChave[metrica.nome] || '';
+
             return (
-              <div
-                key={index}
-                className={`relative rounded-2xl border-2 p-6 text-center transition-all duration-300 hover:scale-105 hover:shadow-2xl bg-slate-800/30 backdrop-blur-xl ${metrica.corFundo}`}
-              >
+              <MetricaFilter key={index} metricaKey={metricaKey}>
+                <div
+                  className={`relative rounded-2xl border-2 p-6 text-center transition-all duration-300 hover:scale-105 hover:shadow-2xl bg-slate-800/30 backdrop-blur-xl ${metrica.corFundo}`}
+                >
                 <div className="flex items-center justify-center mb-4">
                   <div className={`p-3 rounded-xl ${metrica.corFundo}`}>
                     <IconeMetrica className={`h-6 w-6 ${metrica.cor}`} />
@@ -239,6 +280,7 @@ function DashboardTabs() {
                   Atualizado hoje
                 </div>
               </div>
+              </MetricaFilter>
             );
           })}
         </div>
@@ -595,9 +637,19 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
       ? metricasParaExibir.investimento / metricasParaExibir.leads 
       : 0;
 
-    // Métricas financeiras (4 cards incluindo custo por lead)
-    // Estados para armazenar dados de todos os departamentos
-    const [sdrDetail, setSdrDetail] = useState<any>(null);
+    // Calcular média diária de leads
+    const calcularMediaDiaria = () => {
+      if (!metricasParaExibir || metricasParaExibir.leads === 0) return 0;
+      
+      const inicio = new Date(filtroData.dataInicio);
+      const fim = new Date(filtroData.dataFim);
+      const diffTime = Math.abs(fim.getTime() - inicio.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 para incluir ambos os dias
+      
+      return metricasParaExibir.leads / diffDays;
+    };
+    
+    const mediaDiariaLeads = calcularMediaDiaria();
     const [sdrDetailPrev, setSdrDetailPrev] = useState<any>(null);
     const [closerDetail, setCloserDetail] = useState<any>(null);
     const [closerDetailPrev, setCloserDetailPrev] = useState<any>(null);
@@ -1326,12 +1378,39 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
       ];
     })() : metricasParaExibir ? [
       {
+        title: 'Total de Leads',
+        value: metricasParaExibir.leads > 0 ? metricasParaExibir.leads.toLocaleString('pt-BR') : '0',
+        trend: metricasParaExibir.leads > 0 ? 'up' as const : 'stable' as const,
+        icon: <Users className="h-5 w-5" />,
+        percentage: Math.min(metricasParaExibir.leads * 2, 100),
+        gradient: 'from-cyan-500/20 to-blue-500/20',
+        description: campanhaAtiva ? 'Leads capturados' : 'Total de leads'
+      },
+      {
+        title: 'Média Diária de Leads',
+        value: mediaDiariaLeads > 0 ? mediaDiariaLeads.toFixed(1) : '0',
+        trend: mediaDiariaLeads >= 10 ? 'up' as const : mediaDiariaLeads > 0 ? 'stable' as const : 'down' as const,
+        icon: <TrendingUp className="h-5 w-5" />,
+        percentage: Math.min(mediaDiariaLeads * 5, 100),
+        gradient: 'from-emerald-500/20 to-cyan-500/20',
+        description: mediaDiariaLeads >= 10 ? 'Ótima média' : mediaDiariaLeads > 0 ? 'Média moderada' : 'Sem dados'
+      },
+      {
+        title: 'Custo por Lead',
+        value: custoPortLead > 0 ? `R$ ${custoPortLead.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'Não informado',
+        trend: custoPortLead <= 50 ? 'up' as const : custoPortLead <= 100 ? 'stable' as const : 'down' as const,
+        icon: <DollarSign className="h-5 w-5" />,
+        percentage: custoPortLead > 0 ? Math.max(100 - custoPortLead, 10) : 0,
+        gradient: 'from-orange-500/20 to-amber-500/20',
+        description: custoPortLead <= 50 ? 'Custo otimizado' : custoPortLead <= 100 ? 'Custo moderado' : 'Custo elevado'
+      },
+      {
         title: 'Investimento',
         value: metricasParaExibir.investimento > 0 ? `R$ ${metricasParaExibir.investimento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'Não informado',
         trend: 'up' as const,
         icon: <Target className="h-5 w-5" />,
         percentage: 85,
-        gradient: 'from-blue-500/20 to-cyan-500/20',
+        gradient: 'from-blue-500/20 to-purple-500/20',
         description: campanhaAtiva ? 'Total investido' : 'Total de todas as campanhas'
       },
       {
@@ -1351,24 +1430,42 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
         percentage: Math.min(metricasParaExibir.roas * 30, 100),
         gradient: 'from-purple-500/20 to-pink-500/20',
         description: metricasParaExibir.roas >= 2 ? 'Excelente retorno' : metricasParaExibir.roas > 0 ? 'Retorno moderado' : 'Sem dados'
+      }
+    ] : [
+      {
+        title: 'Total de Leads',
+        value: 'Não informado',
+        trend: 'stable' as const,
+        icon: <Users className="h-5 w-5" />,
+        percentage: 0,
+        gradient: 'from-cyan-500/20 to-blue-500/20',
+        description: 'Selecione uma campanha'
+      },
+      {
+        title: 'Média Diária de Leads',
+        value: 'Não informado',
+        trend: 'stable' as const,
+        icon: <TrendingUp className="h-5 w-5" />,
+        percentage: 0,
+        gradient: 'from-emerald-500/20 to-cyan-500/20',
+        description: 'Selecione uma campanha'
       },
       {
         title: 'Custo por Lead',
-        value: custoPortLead > 0 ? `R$ ${custoPortLead.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'Não informado',
-        trend: custoPortLead <= 50 ? 'up' as const : custoPortLead <= 100 ? 'stable' as const : 'down' as const,
-        icon: <UserCheck className="h-5 w-5" />,
-        percentage: custoPortLead > 0 ? Math.max(100 - custoPortLead, 10) : 0,
+        value: 'Não informado',
+        trend: 'stable' as const,
+        icon: <DollarSign className="h-5 w-5" />,
+        percentage: 0,
         gradient: 'from-orange-500/20 to-amber-500/20',
-        description: custoPortLead <= 50 ? 'Custo otimizado' : custoPortLead <= 100 ? 'Custo moderado' : 'Custo elevado'
-      }
-    ] : [
+        description: 'Selecione uma campanha'
+      },
       {
         title: 'Investimento',
         value: 'Não informado',
         trend: 'stable' as const,
         icon: <Target className="h-5 w-5" />,
         percentage: 0,
-        gradient: 'from-blue-500/20 to-cyan-500/20',
+        gradient: 'from-blue-500/20 to-purple-500/20',
         description: 'Selecione uma campanha'
       },
       {
@@ -1387,15 +1484,6 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
         icon: <TrendingUp className="h-5 w-5" />,
         percentage: 0,
         gradient: 'from-purple-500/20 to-pink-500/20',
-        description: 'Selecione uma campanha'
-      },
-      {
-        title: 'Custo por Lead',
-        value: 'Não informado',
-        trend: 'stable' as const,
-        icon: <UserCheck className="h-5 w-5" />,
-        percentage: 0,
-        gradient: 'from-orange-500/20 to-amber-500/20',
         description: 'Selecione uma campanha'
       }
     ];  // Dados da campanha para a tabela
@@ -1451,25 +1539,25 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
       {/* Header + Filtros Unificados */}
       <div className="relative z-50">
         <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 via-purple-500/10 to-pink-500/10 blur-3xl" />
-        <div className="relative bg-slate-900/50 backdrop-blur-xl border border-slate-700/50 rounded-xl p-4">
+        <div className="relative bg-slate-900/50 backdrop-blur-xl border border-slate-700/50 rounded-xl p-3 sm:p-4">
           
           {/* Linha 1: Título + Botões */}
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center space-x-3">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-3 gap-2 sm:gap-0">
+            <div className="flex items-center space-x-2 sm:space-x-3">
               <div className="flex space-x-1">
                 <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
                 <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse animation-delay-200"></div>
                 <div className="w-2 h-2 bg-pink-400 rounded-full animate-pulse animation-delay-400"></div>
               </div>
-              <h1 className="text-xl font-bold text-white bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+              <h1 className="text-sm sm:text-base font-bold text-white bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent tracking-tight">
                 {defaultTitle}
                 {(campanhaAtiva || filtrosAtivos.funil) && (
-                  <span className="text-base font-semibold text-slate-300">{` • ${campanhaAtiva ? `Campanha: ${campanhaAtiva.nome}` : `Funil: ${filtrosAtivos.funil?.name}`}`}</span>
+                  <span className="hidden sm:inline text-sm font-semibold text-slate-300">{` • ${campanhaAtiva ? `Campanha: ${campanhaAtiva.nome}` : `Funil: ${filtrosAtivos.funil?.name}`}`}</span>
                 )}
               </h1>
             </div>
-            
-            <div className="flex items-center space-x-2">
+
+            <div className="flex items-center space-x-2 w-full sm:w-auto">
               <button
                 onClick={() => {
                   console.log('🔄 Forçando recarregamento das métricas...');
@@ -1477,9 +1565,9 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
                   recarregarMetricas();
                 }}
                 disabled={loading}
-                className="flex items-center space-x-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-sm rounded-md font-medium hover:from-blue-600 hover:to-cyan-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center justify-center space-x-1.5 px-3 py-2 sm:py-1.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-sm rounded-md font-medium hover:from-blue-600 hover:to-cyan-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-1 sm:flex-initial"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 sm:h-3.5 w-4 sm:w-3.5 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
                 <span>Atualizar</span>
@@ -1488,9 +1576,9 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
               {showEditButton && (
                 <button
                   onClick={() => setModalEditarAberto(true)}
-                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-gradient-to-r from-cyan-500 to-purple-500 text-white text-sm rounded-md font-medium hover:from-cyan-600 hover:to-purple-600 transition-all"
+                  className="flex items-center justify-center space-x-1.5 px-3 py-2 sm:py-1.5 bg-gradient-to-r from-cyan-500 to-purple-500 text-white text-sm rounded-md font-medium hover:from-cyan-600 hover:to-purple-600 transition-all flex-1 sm:flex-initial"
                 >
-                  <Plus className="h-3.5 w-3.5" />
+                  <Plus className="h-4 sm:h-3.5 w-4 sm:w-3.5" />
                   <span>Incluir</span>
                 </button>
               )}
@@ -1500,7 +1588,7 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
           {/* Linha 2: Filtros Inline */}
           <div className="flex flex-col lg:flex-row items-start lg:items-end gap-4 pt-3 border-t border-slate-700/30">
             {/* Filtros de Período */}
-            <div className="flex-shrink-0">
+            <div className="flex-shrink-0 w-full lg:w-auto">
               <FiltrosDashboard
                 filtroAtual={filtroData}
                 onFiltroChange={atualizarFiltroData}
@@ -1521,20 +1609,48 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
         </div>
       </div>
 
-        {/* Métricas Financeiras */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {metricsData.map((metric, index) => (
-            <FuturisticMetricCard
-              key={index}
-              title={metric.title}
-              value={metric.value}
-              trend={metric.trend}
-              icon={metric.icon}
-              percentage={metric.percentage}
-              gradient={metric.gradient}
-              description={metric.description}
-            />
-          ))}
+        {/* Métricas Financeiras - Grid responsivo otimizado para mobile */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+          {metricsData.map((metric, index) => {
+            // Mapear título da métrica para metricaKey
+            const metricaKeyMap: { [key: string]: string } = {
+              'Total de Leads': 'total_leads',
+              'Média Diária de Leads': 'media_diaria_leads',
+              'Custo por Lead': 'custo_por_lead',
+              'Investimento': 'investimento',
+              'Faturamento': 'faturamento',
+              'ROAS': 'roas',
+              'Lead começou preencher diagnóstico': 'comecou_diagnostico',
+              'Leads que chegaram ao CRM Kommo': 'chegaram_crm_kommo',
+              'Leads qualificados para Mentoria': 'qualificados_mentoria',
+              'Leads para Downsell': 'para_downsell',
+              'Agendados para Diagnóstico': 'agendados_diagnostico',
+              'Agendados para Mentoria': 'agendados_mentoria',
+              'Call realizadas': 'calls_realizadas',
+              'Não compareceu a call': 'nao_compareceram',
+              'Vendas da Mentoria': 'vendas_mentoria',
+              'Vendas Downsell': 'vendas_downsell',
+              'Leads Contatados': 'leads_contatados',
+              'Alunas contatadas': 'alunas_contatadas',
+              'Suporte prestado': 'suporte_prestado'
+            };
+            
+            const metricaKey = metricaKeyMap[metric.title] || '';
+            
+            return (
+              <MetricaFilter key={index} metricaKey={metricaKey}>
+                <FuturisticMetricCard
+                  title={metric.title}
+                  value={metric.value}
+                  trend={metric.trend}
+                  icon={metric.icon}
+                  percentage={metric.percentage}
+                  gradient={metric.gradient}
+                  description={metric.description}
+                />
+              </MetricaFilter>
+            );
+          })}
         </div>
 
         {/* Funil de Conversão (ocultar no dashboard SDR, Closer, Social Seller e CS) */}

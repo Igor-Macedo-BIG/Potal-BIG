@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import AdminClientes from './clientes/page';
 import { LayoutComFunis } from '@/components/layout/LayoutComFunis';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useCliente } from '@/contexts/ClienteContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -126,8 +128,9 @@ const roleColors: Record<UserRole, string> = {
 };
 
 export default function PainelAdmin() {
+  const { clienteSelecionado } = useCliente();
   const { theme, setTheme } = useTheme();
-  const [activeTab, setActiveTab] = useState('usuarios');
+  const [activeTab, setActiveTab] = useState('clientes');
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [funis, setFunis] = useState<Funil[]>([]);
   const [campanhas, setCampanhas] = useState<Campanha[]>([]);
@@ -189,7 +192,7 @@ export default function PainelAdmin() {
   useEffect(() => {
     carregarUsuarios();
     carregarFunis();
-  }, []);
+  }, [clienteSelecionado]);
 
   const carregarUsuarios = async () => {
     try {
@@ -200,7 +203,7 @@ export default function PainelAdmin() {
       console.log('👤 Sessão atual:', sessionData?.session?.user?.email);
       
       const { data, error } = await supabase
-        .from('users')
+        .from('usuarios')
         .select('*')
         .order('created_at', { ascending: false});
 
@@ -286,7 +289,7 @@ export default function PainelAdmin() {
       // Criar registro na tabela users
       console.log('💾 Inserindo na tabela users...');
       const { error: insertError } = await supabase
-        .from('users')
+        .from('usuarios')
         .insert({
           id: authData.user.id,
           nome: novoUsuario.nome,
@@ -330,7 +333,7 @@ export default function PainelAdmin() {
       console.log('🗑️ Excluindo usuário:', usuarioId);
 
       const { error } = await supabase
-        .from('users')
+        .from('usuarios')
         .delete()
         .eq('id', usuarioId);
 
@@ -357,7 +360,7 @@ export default function PainelAdmin() {
       console.log('🔄 Alterando status:', usuarioId, !ativoAtual);
 
       const { error } = await supabase
-        .from('users')
+        .from('usuarios')
         .update({ ativo: !ativoAtual })
         .eq('id', usuarioId);
 
@@ -392,7 +395,7 @@ export default function PainelAdmin() {
 
       // Atualizar dados na tabela users
       const { error: updateError } = await supabase
-        .from('users')
+        .from('usuarios')
         .update({
           nome: usuarioEditando.nome,
           role: usuarioEditando.role,
@@ -430,11 +433,16 @@ export default function PainelAdmin() {
   const carregarFunis = async () => {
     setLoading(true);
     try {
-      const { data: funisData, error: errorFunis } = await supabase
+      let query = supabase
         .from('funis')
         .select('*')
-        .eq('empresa_id', '550e8400-e29b-41d4-a716-446655440000')
-        .order('created_at', { ascending: false });
+        .eq('empresa_id', '550e8400-e29b-41d4-a716-446655440000');
+      
+      if (clienteSelecionado) {
+        query = query.eq('cliente_id', clienteSelecionado.id);
+      }
+      
+      const { data: funisData, error: errorFunis } = await query.order('created_at', { ascending: false });
 
       if (errorFunis) throw errorFunis;
 
@@ -542,8 +550,8 @@ export default function PainelAdmin() {
         .from('funis')
         .insert({
           nome: novoFunil.nome,
-          descricao: novoFunil.descricao,
-          empresa_id: '550e8400-e29b-41d4-a716-446655440000' // ID fixo da empresa
+          empresa_id: '550e8400-e29b-41d4-a716-446655440000', // ID fixo da empresa
+          cliente_id: clienteSelecionado?.id || null
         })
         .select()
         .single();
@@ -999,9 +1007,9 @@ export default function PainelAdmin() {
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="bg-gray-800/50 border border-gray-700">
-              <TabsTrigger value="usuarios" className="data-[state=active]:bg-purple-600">
+              <TabsTrigger value="clientes" className="data-[state=active]:bg-purple-600">
                 <Users className="h-4 w-4 mr-2" />
-                Usuários
+                Clientes
               </TabsTrigger>
               <TabsTrigger value="funis" className="data-[state=active]:bg-cyan-600">
                 <Layers className="h-4 w-4 mr-2" />
@@ -1017,124 +1025,9 @@ export default function PainelAdmin() {
               </TabsTrigger>
             </TabsList>
 
-            {/* Tab: Usuários */}
-            <TabsContent value="usuarios" className="space-y-4">
-              <Card className="bg-gray-800/50 border-gray-700">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="text-white flex items-center gap-2">
-                        <Users className="h-5 w-5" />
-                        Gerenciar Usuários
-                      </CardTitle>
-                      <CardDescription className="text-gray-400">
-                        Crie e gerencie usuários do sistema
-                      </CardDescription>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={() => carregarUsuarios()}
-                        variant="outline"
-                        className="border-gray-600"
-                        disabled={loading}
-                      >
-                        {loading ? 'Carregando...' : 'Recarregar'}
-                      </Button>
-                      <Button
-                        onClick={() => setModalUsuarioAberto(true)}
-                        className="bg-purple-600 hover:bg-purple-700"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Novo Usuário
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Search */}
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                    <Input
-                      placeholder="Buscar usuários..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10 bg-gray-900 border-gray-600 text-white"
-                    />
-                  </div>
-
-                  {/* Debug Info */}
-                  <div className="text-xs text-gray-500">
-                    Total de usuários: {usuarios.length}
-                  </div>
-
-                  {/* User List */}
-                  <div className="grid gap-3">
-                    {usuarios.length === 0 ? (
-                      <div className="text-center py-8 text-gray-400">
-                        <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                        <p>Nenhum usuário encontrado</p>
-                        <p className="text-xs mt-1">Clique em "Novo Usuário" para adicionar</p>
-                      </div>
-                    ) : (
-                      usuarios
-                        .filter((usuario) => 
-                          usuario.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          usuario.email.toLowerCase().includes(searchTerm.toLowerCase())
-                        )
-                        .map((usuario) => {
-                          const IconRole = roleIcons[usuario.role];
-                          return (
-                            <div
-                              key={usuario.id}
-                              className="bg-gray-900/50 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors"
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                  <div className="h-10 w-10 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full flex items-center justify-center">
-                                    <IconRole className="h-5 w-5 text-white" />
-                                  </div>
-                              <div>
-                                <h4 className="text-white font-medium">{usuario.nome}</h4>
-                                <p className="text-sm text-gray-400">{usuario.email}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Badge className={roleColors[usuario.role]}>
-                                {roleLabels[usuario.role]}
-                              </Badge>
-                              <Badge 
-                                variant={usuario.ativo ? 'default' : 'secondary'}
-                                className="cursor-pointer hover:opacity-80 transition-opacity"
-                                onClick={() => handleToggleAtivo(usuario.id, usuario.ativo)}
-                              >
-                                {usuario.ativo ? 'Ativo' : 'Inativo'}
-                              </Badge>
-                              <Button 
-                                size="sm" 
-                                variant="ghost" 
-                                className="text-gray-400 hover:text-white"
-                                onClick={() => handleEditarUsuario(usuario)}
-                                disabled={loading}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button 
-                                size="sm" 
-                                variant="ghost" 
-                                className="text-red-400 hover:text-red-300"
-                                onClick={() => handleExcluirUsuario(usuario.id, usuario.nome)}
-                                disabled={loading}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }))}
-                  </div>
-                </CardContent>
-              </Card>
+            {/* Tab: Clientes */}
+            <TabsContent value="clientes" className="space-y-4">
+              <AdminClientes />
             </TabsContent>
 
             {/* Tab: Funis */}

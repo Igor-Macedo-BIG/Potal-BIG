@@ -102,8 +102,8 @@ export async function middleware(req: NextRequest) {
 
   // Buscar dados do usuário no banco
   const { data: userData } = await supabase
-    .from('users')
-    .select('role, ativo')
+    .from('usuarios')
+    .select('papel, ativo')
     .eq('id', session.user.id)
     .single();
 
@@ -116,7 +116,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // Verificar se o usuário tem permissão para acessar a rota
-  const userRole = userData.role;
+  const userRole = userData.papel;
   const allowedRoutes = roleRoutes[userRole] || [];
 
   // Verificar se a rota atual está nas rotas permitidas do usuário

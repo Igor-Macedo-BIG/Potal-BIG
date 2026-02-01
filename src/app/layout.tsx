@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sistema de Inteligência em Tráfego Pago • Análise em Tempo Real",
+  title: "Portal do Tráfego - Igor Macedo • Análise em Tempo Real",
   description: "Painel completo para análise de campanhas de tráfego pago com métricas detalhadas e comparação de períodos",
 };
 

@@ -88,8 +88,8 @@ export function FuturisticMetricCard({
         'relative overflow-hidden border-2 transition-all duration-500 backdrop-blur-sm',
         'hover:scale-105 hover:shadow-2xl hover:shadow-blue-500/25',
         shouldBeKPI 
-          ? 'border-yellow-400/40 bg-gradient-to-br from-yellow-500/10 via-orange-500/10 to-red-500/10 min-h-[130px] ring-2 ring-yellow-400/20' 
-          : 'border-slate-700/50 bg-gradient-to-br from-slate-800/50 to-slate-900/50 min-h-[110px]'
+          ? 'border-yellow-400/40 bg-gradient-to-br from-yellow-500/10 via-orange-500/10 to-red-500/10 min-h-[160px] sm:min-h-[150px] ring-2 ring-yellow-400/20' 
+          : 'border-slate-700/50 bg-gradient-to-br from-slate-800/50 to-slate-900/50 min-h-[140px] sm:min-h-[130px]'
       )}>
         {/* Background gradient */}
         <div className={cn(
@@ -117,7 +117,7 @@ export function FuturisticMetricCard({
               </div>
             )}
             <CardTitle className={cn(
-              'text-xs font-medium uppercase tracking-wider',
+              'text-[11px] sm:text-xs font-medium uppercase tracking-wider',
               shouldBeKPI ? 'text-yellow-200' : 'text-slate-300'
             )}>
               {title}
@@ -139,9 +139,9 @@ export function FuturisticMetricCard({
           {/* Valor Principal - DESTAQUE MÁXIMO */}
           <div className={cn(
             'font-black tracking-tight leading-none mb-2 drop-shadow-lg',
-            shouldBeKPI 
-              ? 'text-4xl text-white' 
-              : 'text-2xl text-slate-100'
+            shouldBeKPI
+              ? 'text-4xl sm:text-4xl text-white'
+              : 'text-2xl sm:text-3xl text-slate-100'
           )}>
             {value === 0 || value === '0' || value === 'Não informado' ? (
               <span className="text-slate-500">-</span>

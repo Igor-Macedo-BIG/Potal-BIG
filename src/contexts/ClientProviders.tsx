@@ -3,6 +3,8 @@
 import React from 'react';
 import { CampanhaProvider } from './CampanhaContext';
 import { ThemeProvider } from './ThemeContext';
+import { ClienteProvider } from './ClienteContext';
+import { Toaster } from '@/components/ui/toaster';
 
 interface Props {
   children: React.ReactNode;
@@ -11,7 +13,12 @@ interface Props {
 export default function ClientProviders({ children }: Props) {
   return (
     <ThemeProvider>
-      <CampanhaProvider>{children}</CampanhaProvider>
+      <ClienteProvider>
+        <CampanhaProvider>
+          {children}
+          <Toaster />
+        </CampanhaProvider>
+      </ClienteProvider>
     </ThemeProvider>
   );
 }
