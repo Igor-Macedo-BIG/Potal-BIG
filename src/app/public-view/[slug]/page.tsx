@@ -18,7 +18,7 @@ export default async function PublicClientePage({ params }: PageProps) {
   const { slug } = await params;
   const supabase = await createClient();
   console.log(' SERVER: Buscando cliente por slug:', slug);
-  const { data: cliente, error } = await supabase.from('clientes').select('id, nome, logo_url, slug, metricas_visiveis').eq('slug', slug).single();
+  const { data: cliente, error } = await supabase.from('clientes').select('id, nome, logo_url, slug, metricas_visiveis, empresa_id').eq('slug', slug).single();
   console.log(' SERVER: Resultado:', { cliente, error });
   if (error) { console.error(' SERVER: Erro detalhado:', JSON.stringify(error, null, 2)); }
   if (error || !cliente) { console.log(' SERVER: Cliente não encontrado!'); notFound(); }

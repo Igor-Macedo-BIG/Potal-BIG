@@ -128,7 +128,23 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
     if (clienteSelecionado) {
       buscarMetricasGerais();
     } else {
-      setMetricasGerais({ investimento: 0, faturamento: 0, roas: 0, leads: 0, vendas: 0 });
+      setMetricasGerais({
+        investimento: 0,
+        faturamento: 0,
+        roas: 0,
+        leads: 0,
+        vendas: 0,
+        alcance: 0,
+        impressoes: 0,
+        cliques: 0,
+        visualizacoes_pagina: 0,
+        checkouts: 0,
+        ctr: 0,
+        cpm: 0,
+        cpc: 0,
+        cpl: 0,
+        taxa_conversao: 0
+      });
     }
   }, [clienteSelecionado]);
 

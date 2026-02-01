@@ -10,6 +10,8 @@ interface Cliente {
   nome: string;
   logo_url?: string;
   slug?: string;
+  empresa_id: string;
+  metricas_visiveis?: any;
 }
 
 interface PublicClienteViewProps {
