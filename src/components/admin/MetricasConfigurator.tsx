@@ -54,14 +54,14 @@ export function MetricasConfigurator({ value, onChange }: MetricasConfiguratorPr
   const selecionarTodas = () => {
     const todasAtivas = Object.fromEntries(
       METRICAS_DISPONIVEIS.map(m => [m.key, true])
-    ) as MetricasConfig;
+    ) as unknown as MetricasConfig;
     onChange(todasAtivas);
   };
 
   const deselecionarTodas = () => {
     const todasInativas = Object.fromEntries(
       METRICAS_DISPONIVEIS.map(m => [m.key, false])
-    ) as MetricasConfig;
+    ) as unknown as MetricasConfig;
     onChange(todasInativas);
   };
 
