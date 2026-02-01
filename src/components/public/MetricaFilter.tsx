@@ -22,7 +22,7 @@ export function MetricaFilter({ metricaKey, children }: MetricaFilterProps) {
   }
 
   // Verifica se a métrica está habilitada
-  const isVisible = clienteSelecionado.metricas_visiveis[metricaKey] === true;
+  const isVisible = (clienteSelecionado.metricas_visiveis as any)?.[metricaKey] === true;
 
   // Se não visível, retorna null (esconde o card)
   if (!isVisible) {
