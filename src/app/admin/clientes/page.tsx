@@ -30,7 +30,7 @@ interface Cliente {
   nome: string;
   email?: string;
   telefone?: string;
-  metricas_visiveis?: string[];
+  metricas_visiveis?: any;
   created_at: string;
 }
 
@@ -45,7 +45,7 @@ export default function AdminClientes() {
     nome: '',
     email: '',
     telefone: '',
-    metricas_visiveis: [] as string[],
+    metricas_visiveis: {} as any,
   });
 
   useEffect(() => {
@@ -80,11 +80,11 @@ export default function AdminClientes() {
         nome: cliente.nome,
         email: cliente.email || '',
         telefone: cliente.telefone || '',
-        metricas_visiveis: cliente.metricas_visiveis || [],
+        metricas_visiveis: cliente.metricas_visiveis || {},
       });
     } else {
       setEditando(null);
-      setFormData({ nome: '', email: '', telefone: '', metricas_visiveis: [] });
+      setFormData({ nome: '', email: '', telefone: '', metricas_visiveis: {} });
     }
     setDialogAberto(true);
   };
