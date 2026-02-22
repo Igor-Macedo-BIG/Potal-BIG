@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
-import { cookies } from 'next/headers';
+import { getOrCreateUsuario } from '@/lib/get-usuario';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,50 +12,76 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    // Obter empresa do usuário
-    const { data: usuario } = await supabase
-      .from('usuarios')
-      .select('empresa_id')
-      .eq('id', session.user.id)
-      .single();
-
+    // Obter (ou criar) usuário
+    const usuario = await getOrCreateUsuario(supabase, session.user.id, session.user.email || '');
     if (!usuario) {
-      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+      return NextResponse.json({ error: 'Não foi possível identificar o usuário' }, { status: 404 });
     }
 
-    // Buscar funis com campanhas relacionadas
-    const { data: funis, error } = await supabase
+    // 1. Buscar funis da empresa
+    const { data: funis, error: funisError } = await supabase
       .from('funis')
-      .select(`
-        id,
-        nome,
-        descricao,
-        empresa_id,
-        ativo,
-        created_at,
-        updated_at,
-        campanhas (
-          id,
-          nome,
-          tipo,
-          plataforma,
-          ativo,
-          created_at
-        )
-      `)
+      .select('id, nome, descricao, ativo, created_at, empresa_id')
       .eq('empresa_id', usuario.empresa_id)
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Erro ao buscar funis:', error);
-      return NextResponse.json({ error: 'Erro ao buscar funis' }, { status: 500 });
+    if (funisError) {
+      console.error('[API Funis GET - Funis Error]', funisError);
+      return NextResponse.json(
+        { error: `Erro ao buscar funis: ${funisError.message}` },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json(funis);
+    const funilIds = (funis || []).map(f => f.id);
+
+    // 2. Buscar campanhas associadas aos funis
+    let campanhas: any[] = [];
+    if (funilIds.length > 0) {
+      const { data: campanhasData, error: campanhasError } = await supabase
+        .from('campanhas')
+        .select('id, nome, tipo, plataforma, ativo, funil_id, created_at')
+        .in('funil_id', funilIds)
+        .order('created_at', { ascending: false });
+
+      if (campanhasError) {
+        console.error('[API Funis GET - Campanhas Error]', campanhasError);
+      } else {
+        campanhas = campanhasData || [];
+      }
+    }
+
+    // 3. Agrupar campanhas por funil e contar
+    const campanhasPorFunil: Record<string, any[]> = {};
+    campanhas.forEach(campanha => {
+      if (!campanhasPorFunil[campanha.funil_id]) {
+        campanhasPorFunil[campanha.funil_id] = [];
+      }
+      campanhasPorFunil[campanha.funil_id].push(campanha);
+    });
+
+    // 4. Adicionar contagem de campanhas aos funis
+    const funisComContagem = (funis || []).map(funil => ({
+      ...funil,
+      campanhas_count: campanhasPorFunil[funil.id]?.length || 0
+    }));
+
+    return NextResponse.json({
+      funis: funisComContagem,
+      campanhas,
+      campanhasPorFunil,
+      resumo: {
+        totalFunis: funisComContagem.length,
+        totalCampanhas: campanhas.length
+      }
+    });
 
   } catch (error) {
-    console.error('Erro na API funis:', error);
-    return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 });
+    console.error('[API Funis GET]', error);
+    return NextResponse.json(
+      { error: 'Erro interno do servidor', details: error instanceof Error ? error.message : 'Erro desconhecido' },
+      { status: 500 }
+    );
   }
 }
 
@@ -69,15 +95,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    // Obter empresa do usuário
-    const { data: usuario } = await supabase
-      .from('usuarios')
-      .select('empresa_id')
-      .eq('id', session.user.id)
-      .single();
-
+    // Obter (ou criar) usuário
+    const usuario = await getOrCreateUsuario(supabase, session.user.id, session.user.email || '');
     if (!usuario) {
-      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+      return NextResponse.json({ error: 'Não foi possível identificar o usuário' }, { status: 404 });
     }
 
     const { nome, descricao } = await request.json();

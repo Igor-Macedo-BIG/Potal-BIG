@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import type { Campanha, MetricasAgregadas } from '@/types/hierarchical';
 
 export interface FiltroData {
-  tipo: 'hoje' | 'ontem' | 'semana' | 'mes' | 'mes-passado' | 'trimestre' | 'ano' | 'personalizado';
+  tipo: 'hoje' | 'ontem' | 'semana' | 'semana-passada' | 'semana1' | 'semana2' | 'semana3' | 'semana4' | 'mes' | 'mes-passado' | 'trimestre' | 'ano' | 'personalizado';
   dataInicio: string;
   dataFim: string;
 }
@@ -47,6 +47,39 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
   const [metricasGerais, setMetricasGerais] = useState<MetricasAgregadas | null>(null);
   const [loading, setLoading] = useState(false);
   const [filtroHierarquico, setFiltroHierarquico] = useState<{ tipo: 'funil' | 'campanha' | 'publico' | 'criativo' | null; id: string | null } | null>(null);
+  
+  const toNumber = (v: any) => (v === null || v === undefined ? 0 : Number(v));
+
+  // Helper: enriquecer métricas com faturamento/vendas do Kommo (tipo='funil')
+  // funilId: se passado, busca apenas daquele funil. Se null/undefined, busca de todos os funis.
+  const enriquecerComFaturamentoKommo = async (metricas: MetricasAgregadas, filtroAtual: FiltroData, funilId?: string | null): Promise<void> => {
+    try {
+      let query = supabase
+        .from('metricas')
+        .select('faturamento, vendas')
+        .eq('tipo', 'funil')
+        .gte('periodo_inicio', filtroAtual.dataInicio)
+        .lte('periodo_inicio', filtroAtual.dataFim);
+
+      if (funilId) {
+        query = query.eq('referencia_id', funilId);
+      }
+
+      const { data: metricasFunil } = await query;
+
+      if (metricasFunil && metricasFunil.length > 0) {
+        const faturamentoKommo = metricasFunil.reduce((acc: number, m: any) => acc + toNumber(m.faturamento), 0);
+        const vendasKommo = metricasFunil.reduce((acc: number, m: any) => acc + toNumber(m.vendas), 0);
+        if (faturamentoKommo > 0) metricas.faturamento = faturamentoKommo;
+        if (vendasKommo > 0 && metricas.vendas === 0) metricas.vendas = vendasKommo;
+      }
+    } catch (err) {
+      console.warn('Erro ao buscar faturamento Kommo:', err);
+    }
+
+    // Recalcular ROAS com faturamento atualizado
+    metricas.roas = metricas.investimento > 0 ? parseFloat((metricas.faturamento / metricas.investimento).toFixed(2)) : 0;
+  };
   
   // Filtro padrão: carregar de localStorage se disponível, senão usar mês atual
   const [filtroData, setFiltroData] = useState<FiltroData>(() => {
@@ -122,74 +155,27 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
     });
 
     try {
-      // Buscar públicos da campanha
-      const { data: publicosCampanha } = await supabase
-        .from('conjuntos_anuncio')
-        .select('id')
-        .eq('campanha_id', campanhaId);
+      // Buscar funil_id da campanha para filtrar faturamento Kommo corretamente
+      const { data: campanhaData } = await supabase
+        .from('campanhas')
+        .select('funil_id')
+        .eq('id', campanhaId)
+        .single();
+      const campanhaFunilId = campanhaData?.funil_id || null;
 
-      const publicoIds = publicosCampanha?.map(p => p.id) || [];
+      // Buscar APENAS métricas de tipo='campanha' para esta campanha
+      // Os dados campaign-level do Meta já incluem todos os adsets/ads
+      const { data: metricasArray, error } = await supabase
+        .from('metricas')
+        .select('*')
+        .eq('tipo', 'campanha')
+        .eq('referencia_id', campanhaId)
+        .gte('periodo_inicio', filtroAtual.dataInicio)
+        .lte('periodo_inicio', filtroAtual.dataFim);
 
-      // Buscar criativos dos públicos
-      const { data: criativosCampanha } = await supabase
-        .from('anuncios')
-        .select('id')
-        .in('conjunto_anuncio_id', publicoIds);
-
-      const criativoIds = criativosCampanha?.map(c => c.id) || [];
-
-      // Buscar métricas de TODOS os níveis: campanha, públicos e criativos
-      const queries = [];
-      
-      // Métricas da própria campanha
-      queries.push(
-        supabase
-          .from('metricas')
-          .select('*')
-          .eq('tipo', 'campanha')
-          .eq('referencia_id', campanhaId)
-          .gte('periodo_inicio', filtroAtual.dataInicio)
-          .lte('periodo_inicio', filtroAtual.dataFim)
-      );
-      
-      // Métricas dos públicos
-      if (publicoIds.length > 0) {
-        queries.push(
-          supabase
-            .from('metricas')
-            .select('*')
-            .eq('tipo', 'publico')
-            .in('referencia_id', publicoIds)
-            .gte('periodo_inicio', filtroAtual.dataInicio)
-            .lte('periodo_inicio', filtroAtual.dataFim)
-        );
-      }
-      
-      // Métricas dos criativos
-      if (criativoIds.length > 0) {
-        queries.push(
-          supabase
-            .from('metricas')
-            .select('*')
-            .eq('tipo', 'criativo')
-            .in('referencia_id', criativoIds)
-            .gte('periodo_inicio', filtroAtual.dataInicio)
-            .lte('periodo_inicio', filtroAtual.dataFim)
-        );
-      }
-
-      // Executar todas as queries em paralelo
-      const results = await Promise.all(queries);
-      
-      // Combinar todos os resultados
-      const metricasArray = results.flatMap(result => result.data || []);
-      const error = results.find(result => result.error)?.error;
-
-      console.log('📊 RESULTADO DA BUSCA (TODOS os níveis):', {
-        total: metricasArray.length,
-        campanha: metricasArray.filter(m => m.tipo === 'campanha').length,
-        publicos: metricasArray.filter(m => m.tipo === 'publico').length,
-        criativos: metricasArray.filter(m => m.tipo === 'criativo').length
+      console.log('📊 Métricas da campanha (tipo=campanha):', {
+        total: metricasArray?.length || 0,
+        campanhaId: campanhaId.substring(0, 8)
       });
 
       if (error) {
@@ -243,7 +229,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
             taxa_conversao: 0
           };
 
-          metricas.roas = metricas.investimento > 0 ? parseFloat((metricas.faturamento / metricas.investimento).toFixed(2)) : 0;
+          // Enriquecer com faturamento do Kommo (filtrado pelo funil da campanha)
+          await enriquecerComFaturamentoKommo(metricas, filtroAtual, campanhaFunilId);
+
           metricas.ctr = metricas.impressoes > 0 ? parseFloat(((metricas.cliques / metricas.impressoes) * 100).toFixed(2)) : 0;
           metricas.cpm = metricas.impressoes > 0 ? parseFloat(((metricas.investimento / metricas.impressoes) * 1000).toFixed(2)) : 0;
           metricas.cpc = metricas.cliques > 0 ? parseFloat((metricas.investimento / metricas.cliques).toFixed(2)) : 0;
@@ -287,8 +275,8 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
             taxa_conversao: 0
           });
 
-          // Recalcular métricas derivadas
-          metricas.roas = metricas.investimento > 0 ? parseFloat((metricas.faturamento / metricas.investimento).toFixed(2)) : 0;
+          // Enriquecer com faturamento do Kommo (filtrado pelo funil da campanha)
+          await enriquecerComFaturamentoKommo(metricas, filtroAtual, campanhaFunilId);
           metricas.ctr = metricas.impressoes > 0 ? parseFloat(((metricas.cliques / metricas.impressoes) * 100).toFixed(2)) : 0;
           metricas.cpm = metricas.impressoes > 0 ? parseFloat(((metricas.investimento / metricas.impressoes) * 1000).toFixed(2)) : 0;
           metricas.cpc = metricas.cliques > 0 ? parseFloat((metricas.investimento / metricas.cliques).toFixed(2)) : 0;
@@ -322,59 +310,22 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
     });
 
     try {
-      // Buscar métricas de TODOS os níveis: funil, campanha, publico, criativo
-      const queries = [
-        // Funis
-        supabase
-          .from('metricas')
-          .select('*')
-          .eq('tipo', 'funil')
-          .gte('periodo_inicio', filtroAtual.dataInicio)
-          .lte('periodo_inicio', filtroAtual.dataFim),
-        
-        // Campanhas
-        supabase
-          .from('metricas')
-          .select('*')
-          .eq('tipo', 'campanha')
-          .gte('periodo_inicio', filtroAtual.dataInicio)
-          .lte('periodo_inicio', filtroAtual.dataFim),
-        
-        // Públicos
-        supabase
-          .from('metricas')
-          .select('*')
-          .eq('tipo', 'publico')
-          .gte('periodo_inicio', filtroAtual.dataInicio)
-          .lte('periodo_inicio', filtroAtual.dataFim),
-        
-        // Criativos
-        supabase
-          .from('metricas')
-          .select('*')
-          .eq('tipo', 'criativo')
-          .gte('periodo_inicio', filtroAtual.dataInicio)
-          .lte('periodo_inicio', filtroAtual.dataFim)
-      ];
+      // Buscar APENAS métricas de campanha — elas já contêm os totais de adsets/ads
+      // NÃO somar conjunto/anuncio pois seria dupla/tripla contagem
+      const { data: metricasArray, error } = await supabase
+        .from('metricas')
+        .select('*')
+        .eq('tipo', 'campanha')
+        .gte('periodo_inicio', filtroAtual.dataInicio)
+        .lte('periodo_inicio', filtroAtual.dataFim);
 
-      // Executar todas as queries em paralelo
-      const results = await Promise.all(queries);
-      
-      // Combinar todos os resultados
-      const metricasArray = results.flatMap(result => result.data || []);
-      const error = results.find(result => result.error)?.error;
-
-      console.log('📊 Métricas encontradas (TODOS os níveis):', {
-        total: metricasArray.length,
-        funil: metricasArray.filter(m => m.tipo === 'funil').length,
-        campanhas: metricasArray.filter(m => m.tipo === 'campanha').length,
-        publicos: metricasArray.filter(m => m.tipo === 'publico').length,
-        criativos: metricasArray.filter(m => m.tipo === 'criativo').length,
+      console.log('📊 Métricas gerais (tipo=campanha):', {
+        total: metricasArray?.length || 0,
         periodo: `${filtroAtual.dataInicio} até ${filtroAtual.dataFim}`,
-        amostras: metricasArray.slice(0, 3).map(m => ({
+        amostras: (metricasArray || []).slice(0, 3).map(m => ({
           tipo: m.tipo,
+          referencia_id: m.referencia_id?.substring(0, 8),
           periodo_inicio: m.periodo_inicio,
-          periodo_fim: m.periodo_fim,
           investimento: m.investimento
         }))
       });
@@ -450,8 +401,8 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           taxa_conversao: 0
         });
 
-        // Recalcular métricas derivadas
-        metricas.roas = metricas.investimento > 0 ? parseFloat((metricas.faturamento / metricas.investimento).toFixed(2)) : 0;
+        // Enriquecer com faturamento do Kommo + recalcular derivadas
+        await enriquecerComFaturamentoKommo(metricas, filtroAtual);
         metricas.ctr = metricas.impressoes > 0 ? parseFloat(((metricas.cliques / metricas.impressoes) * 100).toFixed(2)) : 0;
         metricas.cpm = metricas.impressoes > 0 ? parseFloat(((metricas.investimento / metricas.impressoes) * 1000).toFixed(2)) : 0;
         metricas.cpc = metricas.cliques > 0 ? parseFloat((metricas.investimento / metricas.cliques).toFixed(2)) : 0;
@@ -522,17 +473,42 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
     } catch (err) {
       console.warn('Não foi possível salvar filtro no localStorage', err);
     }
-    // Se há campanha ativa, recarregar com novo filtro
-    if (campanhaAtiva) {
+    // Respeitar filtro hierárquico ativo (funil/público/criativo)
+    if (filtroHierarquico && filtroHierarquico.tipo && filtroHierarquico.id) {
+      console.log('🔄 Atualizando período com filtro hierárquico:', filtroHierarquico);
+      if (filtroHierarquico.tipo === 'criativo') {
+        buscarMetricasPorCriativo(filtroHierarquico.id, novoFiltro);
+      } else if (filtroHierarquico.tipo === 'publico') {
+        buscarMetricasPorPublico(filtroHierarquico.id, novoFiltro);
+      } else if (filtroHierarquico.tipo === 'funil') {
+        buscarMetricasPorFunil(filtroHierarquico.id, novoFiltro);
+      } else if (filtroHierarquico.tipo === 'campanha') {
+        buscarMetricasCampanha(filtroHierarquico.id, novoFiltro);
+      } else {
+        buscarMetricasGerais(novoFiltro);
+      }
+    } else if (campanhaAtiva) {
       buscarMetricasCampanha(campanhaAtiva.id, novoFiltro);
     } else {
-      // Se não há campanha ativa, atualizar métricas gerais
       buscarMetricasGerais(novoFiltro);
     }
   };
 
   const recarregarMetricas = () => {
-    if (campanhaAtiva) {
+    // Respeitar filtro hierárquico ativo
+    if (filtroHierarquico && filtroHierarquico.tipo && filtroHierarquico.id) {
+      if (filtroHierarquico.tipo === 'criativo') {
+        buscarMetricasPorCriativo(filtroHierarquico.id);
+      } else if (filtroHierarquico.tipo === 'publico') {
+        buscarMetricasPorPublico(filtroHierarquico.id);
+      } else if (filtroHierarquico.tipo === 'funil') {
+        buscarMetricasPorFunil(filtroHierarquico.id);
+      } else if (filtroHierarquico.tipo === 'campanha') {
+        buscarMetricasCampanha(filtroHierarquico.id);
+      } else {
+        buscarMetricasGerais();
+      }
+    } else if (campanhaAtiva) {
       buscarMetricasCampanha(campanhaAtiva.id);
     } else {
       buscarMetricasGerais();
@@ -591,90 +567,18 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
       const campanhaIds = campanhasFunil.map(c => c.id);
       console.log('📋 Campanhas do funil:', campanhaIds);
 
-      // Buscar públicos (conjuntos_anuncio) das campanhas
-      const { data: publicosFunil, error: errorPublicos } = await supabase
-        .from('conjuntos_anuncio')
-        .select('id')
-        .in('campanha_id', campanhaIds);
+      // Buscar APENAS métricas tipo='campanha' — já incluem totais de adsets/ads
+      const { data: metricasArray, error: errorMetricas } = await supabase
+        .from('metricas')
+        .select('*')
+        .eq('tipo', 'campanha')
+        .in('referencia_id', campanhaIds)
+        .gte('periodo_inicio', filtroAtual.dataInicio)
+        .lte('periodo_inicio', filtroAtual.dataFim);
 
-      const publicoIds = publicosFunil?.map(p => p.id) || [];
-      console.log('📋 Públicos do funil:', publicoIds.length);
-
-      // Buscar criativos (anuncios) dos públicos
-      const { data: criativosFunil, error: errorCriativos } = await supabase
-        .from('anuncios')
-        .select('id')
-        .in('conjunto_anuncio_id', publicoIds);
-
-      const criativoIds = criativosFunil?.map(c => c.id) || [];
-      console.log('📋 Criativos do funil:', criativoIds.length);
-
-      // Buscar métricas de TODOS os níveis: funil, campanhas, públicos e criativos
-      const queries = [];
-      
-      // Métricas do próprio funil
-      queries.push(
-        supabase
-          .from('metricas')
-          .select('*')
-          .eq('tipo', 'funil')
-          .eq('referencia_id', funilId)
-          .gte('periodo_inicio', filtroAtual.dataInicio)
-          .lte('periodo_inicio', filtroAtual.dataFim)
-      );
-      
-      // Métricas das campanhas
-      if (campanhaIds.length > 0) {
-        queries.push(
-          supabase
-            .from('metricas')
-            .select('*')
-            .eq('tipo', 'campanha')
-            .in('referencia_id', campanhaIds)
-            .gte('periodo_inicio', filtroAtual.dataInicio)
-            .lte('periodo_inicio', filtroAtual.dataFim)
-        );
-      }
-      
-      // Métricas dos públicos
-      if (publicoIds.length > 0) {
-        queries.push(
-          supabase
-            .from('metricas')
-            .select('*')
-            .eq('tipo', 'publico')
-            .in('referencia_id', publicoIds)
-            .gte('periodo_inicio', filtroAtual.dataInicio)
-            .lte('periodo_inicio', filtroAtual.dataFim)
-        );
-      }
-      
-      // Métricas dos criativos
-      if (criativoIds.length > 0) {
-        queries.push(
-          supabase
-            .from('metricas')
-            .select('*')
-            .eq('tipo', 'criativo')
-            .in('referencia_id', criativoIds)
-            .gte('periodo_inicio', filtroAtual.dataInicio)
-            .lte('periodo_inicio', filtroAtual.dataFim)
-        );
-      }
-
-      // Executar todas as queries em paralelo
-      const results = await Promise.all(queries);
-      
-      // Combinar todos os resultados
-      const metricasArray = results.flatMap(result => result.data || []);
-      const errorMetricas = results.find(result => result.error)?.error;
-
-      console.log('📊 Métricas encontradas (TODOS os níveis):', {
-        total: metricasArray.length,
-        funil: metricasArray.filter(m => m.tipo === 'funil').length,
-        campanhas: metricasArray.filter(m => m.tipo === 'campanha').length,
-        publicos: metricasArray.filter(m => m.tipo === 'publico').length,
-        criativos: metricasArray.filter(m => m.tipo === 'criativo').length
+      console.log('📊 Métricas do funil (tipo=campanha):', {
+        total: metricasArray?.length || 0,
+        campanhas: campanhaIds.length
       });
 
       if (errorMetricas) {
@@ -682,11 +586,6 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
         setLoading(false);
         return;
       }
-
-      console.log('📊 Métricas encontradas do funil:', {
-        quantidade: metricasArray?.length || 0,
-        campanhas: [...new Set(metricasArray?.map(m => m.referencia_id) || [])]
-      });
 
       if (!metricasArray || metricasArray.length === 0) {
         setMetricasGerais({
@@ -744,8 +643,8 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           taxa_conversao: 0
         });
 
-        // Recalcular métricas derivadas
-        metricas.roas = metricas.investimento > 0 ? parseFloat((metricas.faturamento / metricas.investimento).toFixed(2)) : 0;
+        // Enriquecer com faturamento do Kommo (filtrado por este funil específico)
+        await enriquecerComFaturamentoKommo(metricas, filtroAtual, funilId);
         metricas.ctr = metricas.impressoes > 0 ? parseFloat(((metricas.cliques / metricas.impressoes) * 100).toFixed(2)) : 0;
         metricas.cpm = metricas.impressoes > 0 ? parseFloat(((metricas.investimento / metricas.impressoes) * 1000).toFixed(2)) : 0;
         metricas.cpc = metricas.cliques > 0 ? parseFloat((metricas.investimento / metricas.cliques).toFixed(2)) : 0;
@@ -771,54 +670,22 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
     const filtroAtual = filtro || filtroData;
 
     try {
-      console.log('🔍 Buscando métricas do público:', publicoId);
+      console.log('🔍 Buscando métricas do público (conjunto):', publicoId);
       console.log('📅 Filtro de data:', filtroAtual);
       
-      // Buscar criativos do público
-      const { data: criativosPublico } = await supabase
-        .from('anuncios')
-        .select('id')
-        .eq('conjunto_anuncio_id', publicoId);
+      // Buscar APENAS métricas tipo='conjunto' — dados de adset-level do Meta
+      // O conjunto já contém os totais de todos os ads, não somar criativos
+      const { data: metricasArray, error } = await supabase
+        .from('metricas')
+        .select('*')
+        .eq('tipo', 'conjunto')
+        .eq('referencia_id', publicoId)
+        .gte('periodo_inicio', filtroAtual.dataInicio)
+        .lte('periodo_inicio', filtroAtual.dataFim);
 
-      const criativoIds = criativosPublico?.map(c => c.id) || [];
-      console.log('📋 Criativos do público:', criativoIds.length);
-
-      // Buscar métricas do público E dos criativos
-      const queries = [];
-      
-      // Métricas do próprio público
-      queries.push(
-        supabase
-          .from('metricas')
-          .select('*')
-          .eq('tipo', 'publico')
-          .eq('referencia_id', publicoId)
-          .gte('periodo_inicio', filtroAtual.dataInicio)
-          .lte('periodo_inicio', filtroAtual.dataFim)
-      );
-      
-      // Métricas dos criativos
-      if (criativoIds.length > 0) {
-        queries.push(
-          supabase
-            .from('metricas')
-            .select('*')
-            .eq('tipo', 'criativo')
-            .in('referencia_id', criativoIds)
-            .gte('periodo_inicio', filtroAtual.dataInicio)
-            .lte('periodo_inicio', filtroAtual.dataFim)
-        );
-      }
-
-      // Executar queries em paralelo
-      const results = await Promise.all(queries);
-      const metricasArray = results.flatMap(result => result.data || []);
-      const error = results.find(result => result.error)?.error;
-
-      console.log('📊 Métricas encontradas (TODOS os níveis):', {
-        total: metricasArray.length,
-        publico: metricasArray.filter(m => m.tipo === 'publico').length,
-        criativos: metricasArray.filter(m => m.tipo === 'criativo').length
+      console.log('📊 Métricas do público (tipo=conjunto):', {
+        total: metricasArray?.length || 0,
+        publicoId: publicoId.substring(0, 8)
       });
 
       if (error) {
@@ -929,22 +796,21 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
     const filtroAtual = filtro || filtroData;
 
     try {
-      console.log('🔍 Buscando métricas do criativo:', criativoId);
+      console.log('🔍 Buscando métricas do criativo (anúncio):', criativoId);
       console.log('📅 Filtro de data:', filtroAtual);
       
-      // Buscar métricas do criativo (tipo='criativo')
+      // Buscar métricas do criativo (tipo='anuncio' — como criado pelo sync do Meta)
       const { data: metricasArray, error } = await supabase
         .from('metricas')
         .select('*')
-        .eq('tipo', 'criativo')
+        .eq('tipo', 'anuncio')
         .eq('referencia_id', criativoId)
         .gte('periodo_inicio', filtroAtual.dataInicio)
         .lte('periodo_inicio', filtroAtual.dataFim)
         .order('periodo_inicio', { ascending: true });
 
-      console.log('📊 Métricas encontradas do criativo:', {
-        total: metricasArray?.length || 0,
-        criativos: metricasArray?.filter(m => m.tipo === 'criativo').length
+      console.log('📊 Métricas encontradas do criativo (tipo=anuncio):', {
+        total: metricasArray?.length || 0
       });
 
       if (error) {

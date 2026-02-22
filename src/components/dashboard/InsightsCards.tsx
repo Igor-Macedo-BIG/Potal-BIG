@@ -203,7 +203,7 @@ export function InsightsCards({ dataInicio, dataFim, funilId, campanhaId }: Insi
       let query = supabase
         .from('metricas')
         .select('referencia_id, impressoes, cliques, leads, investimento')
-        .eq('tipo', 'criativo')
+        .eq('tipo', 'anuncio')
         .gte('periodo_inicio', dataInicio)
         .lte('periodo_inicio', dataFim)
         .gt('impressoes', 0)
@@ -317,7 +317,7 @@ export function InsightsCards({ dataInicio, dataFim, funilId, campanhaId }: Insi
       let query = supabase
         .from('metricas')
         .select('referencia_id, investimento, leads')
-        .eq('tipo', 'publico')
+        .eq('tipo', 'conjunto')
         .gte('periodo_inicio', dataInicio)
         .lte('periodo_inicio', dataFim)
         .gt('leads', 0);
@@ -418,7 +418,7 @@ export function InsightsCards({ dataInicio, dataFim, funilId, campanhaId }: Insi
       let query = supabase
         .from('metricas')
         .select('referencia_id, investimento, leads')
-        .eq('tipo', 'publico')
+        .eq('tipo', 'conjunto')
         .gte('periodo_inicio', dataInicio)
         .lte('periodo_inicio', dataFim)
         .gt('leads', 0)

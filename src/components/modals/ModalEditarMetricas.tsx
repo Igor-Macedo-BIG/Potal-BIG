@@ -287,6 +287,91 @@ export default function ModalEditarMetricas({
     }
   }, []);
 
+  // Função para buscar métricas por criativo
+  const buscarMetricasPorCriativo = useCallback(async (criativoId: string, data: string) => {
+    if (isLoadingMetricsRef.current) return;
+    
+    isLoadingMetricsRef.current = true;
+
+    try {
+      console.log('🎨 Buscando métricas por criativo:', { criativoId, data });
+
+      const { data: metricas, error } = await supabase
+        .from('metricas')
+        .select('*')
+        .eq('tipo', 'anuncio')
+        .eq('referencia_id', criativoId)
+        .eq('periodo_inicio', data)
+        .eq('periodo_fim', data)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Erro ao buscar métricas por criativo:', error);
+        return;
+      }
+
+      if (metricas) {
+        console.log('✅ Métricas do criativo encontradas:', metricas);
+        
+        setMetricaExistente(metricas);
+        setModoAtual('editar');
+
+        const [ano, mes, dia] = data.split('-');
+        const dataFormatada = `${dia}/${mes}/${ano}`;
+
+        toast.success('Métricas carregadas!', {
+          description: `Dados de ${dataFormatada} carregados com sucesso.`
+        });
+
+        setFormData({
+          data: metricas.periodo_inicio,
+          alcance: metricas.alcance?.toString() || '0',
+          impressoes: metricas.impressoes?.toString() || '0',
+          cliques: metricas.cliques?.toString() || '0',
+          visualizacoes_pagina: metricas.visualizacoes_pagina?.toString() || '0',
+          leads: metricas.leads?.toString() || '0',
+          checkouts: metricas.checkouts?.toString() || '0',
+          vendas: metricas.vendas?.toString() || '0',
+          investimento: metricas.investimento?.toString() || '0',
+          faturamento: metricas.faturamento?.toString() || '0',
+          investimento_trafego: metricas.investimento?.toString() || '0',
+          sdr_comecou_diagnostico: metricas.detalhe_sdr?.comecou_diagnostico?.toString() || '0',
+          sdr_chegaram_crm_kommo: metricas.detalhe_sdr?.chegaram_crm_kommo?.toString() || '0',
+          sdr_qualificados_mentoria: metricas.detalhe_sdr?.qualificados_para_mentoria?.toString() || '0',
+          sdr_para_downsell: metricas.detalhe_sdr?.para_downsell?.toString() || '0',
+          sdr_agendados_diagnostico: metricas.detalhe_sdr?.agendados_diagnostico?.toString() || '0',
+          sdr_agendados_mentoria: metricas.detalhe_sdr?.agendados_mentoria?.toString() || '0',
+          sdr_nomes_qualificados: metricas.detalhe_sdr?.nomes_qualificados || '',
+          closer_calls_realizadas: metricas.detalhe_closer?.calls_realizadas?.toString() || '0',
+          closer_nao_compareceram: metricas.detalhe_closer?.nao_compareceram?.toString() || '0',
+          closer_vendas_mentoria: metricas.detalhe_closer?.vendas_mentoria?.toString() || '0',
+          closer_vendas_downsell: metricas.detalhe_closer?.vendas_downsell?.toString() || '0',
+          closer_em_negociacao: metricas.detalhe_closer?.em_negociacao?.toString() || '0',
+          closer_em_followup: metricas.detalhe_closer?.em_followup?.toString() || '0',
+          closer_vendas_perdidas: metricas.detalhe_closer?.vendas_perdidas?.toString() || '0',
+          social_seller_leads_contatados: metricas.detalhe_social_seller?.leads_contatados?.toString() || '0',
+          social_seller_agendados_diagnostico: metricas.detalhe_social_seller?.agendados_diagnostico?.toString() || '0',
+          social_seller_agendados_mentoria: metricas.detalhe_social_seller?.agendados_mentoria?.toString() || '0',
+          social_seller_agendados_consultoria: metricas.detalhe_social_seller?.agendados_consultoria?.toString() || '0',
+          social_seller_downsell_vendido: metricas.detalhe_social_seller?.downsell_vendido?.toString() || '0',
+          cs_alunas_contatadas: metricas.detalhe_cs?.alunas_contatadas?.toString() || '0',
+          cs_suporte_prestado: metricas.detalhe_cs?.suporte_prestado?.toString() || '0',
+          cs_suporte_resolvidos: metricas.detalhe_cs?.suporte_resolvidos?.toString() || '0',
+          cs_suporte_pendentes: metricas.detalhe_cs?.suporte_pendentes?.toString() || '0',
+          cs_produtos_vendidos: metricas.detalhe_cs?.produtos_vendidos?.toString() || '0'
+        });
+      } else {
+        console.log('ℹ️ Nenhuma métrica encontrada para este criativo');
+        setMetricaExistente(null);
+        setModoAtual('criar');
+      }
+    } catch (err) {
+      console.error('Erro ao buscar métricas por criativo:', err);
+    } finally {
+      isLoadingMetricsRef.current = false;
+    }
+  }, []);
+
   // Resetar form quando abrir/fechar modal
   useEffect(() => {
     if (open) {
@@ -381,10 +466,12 @@ export default function ModalEditarMetricas({
         setSelectedCampanha(filtrosIniciais.campanha || campanha || null);
         setSelectedPublico(filtrosIniciais.publico);
         setSelectedCriativo(filtrosIniciais.criativo);
-        
-        // Buscar métricas existentes para a campanha e data
+
+        // Buscar métricas existentes - priorizar campanha, senão buscar por criativo
         if (filtrosIniciais.campanha?.id && dataInicial) {
           buscarMetricasExistentes(filtrosIniciais.campanha.id, dataInicial);
+        } else if (filtrosIniciais.criativo?.id && dataInicial) {
+          buscarMetricasPorCriativo(filtrosIniciais.criativo.id, dataInicial);
         }
       } else {
         // reset selects when opening
@@ -1665,6 +1752,18 @@ export default function ModalEditarMetricas({
 
   const handleInputChange = (field: keyof typeof formData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    
+    // Se mudar a data, buscar métricas existentes
+    if (field === 'data' && value) {
+      lastLoadedDataRef.current = null;
+      
+      // Priorizar campanha, senão buscar por criativo
+      if (selectedCampanha?.id) {
+        buscarMetricasExistentes(selectedCampanha.id, value);
+      } else if (selectedCriativo?.id) {
+        buscarMetricasPorCriativo(selectedCriativo.id, value);
+      }
+    }
   };
 
   // Permitir abrir o modal mesmo quando nenhuma campanha está pré-selecionada
@@ -1779,7 +1878,7 @@ export default function ModalEditarMetricas({
 
             <form onSubmit={handleSubmit} className="space-y-6">
           {/* Tipo de Distribuição - apenas para modo adicionar */}
-          {!modoEdicao && department !== 'sdr' && department !== 'closer' && department !== 'social-seller' && department !== 'cs' && (
+          {!modoEdicao && (
             <div className="space-y-3">
               <Label className="text-gray-300">Tipo de Distribuição</Label>
             <div className="flex gap-2">
@@ -1816,15 +1915,6 @@ export default function ModalEditarMetricas({
               {tipoDistribuicao === 'semanal' && 'Os valores serão distribuídos pelos 7 dias da semana selecionada.'}
               {tipoDistribuicao === 'mensal' && 'Os valores serão distribuídos por todos os dias do mês selecionado.'}
             </p>
-            </div>
-          )}
-
-          {/* Aviso para departamentos SDR/Closer/etc */}
-          {(department === 'sdr' || department === 'closer' || department === 'social-seller' || department === 'cs') && !modoEdicao && (
-            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-              <p className="text-sm text-blue-300">
-                💡 <strong>Dica:</strong> Insira os valores TOTAIS da semana. Eles serão salvos como um único registro na data selecionada.
-              </p>
             </div>
           )}
 
@@ -1932,7 +2022,15 @@ export default function ModalEditarMetricas({
                   onChange={(e) => {
                     const id = e.target.value;
                     const c = campanhasList.find(x => x.id === id) || null;
-                    setSelectedCampanha(c ? { id: c.id, nome: c.nome } : null);
+                    const novaCampanha = c ? { id: c.id, nome: c.nome } : null;
+                    setSelectedCampanha(novaCampanha);
+                    
+                    // Buscar métricas quando selecionar campanha (se houver data)
+                    if (novaCampanha && formData.data) {
+                      // Resetar o cache para forçar nova busca
+                      lastLoadedDataRef.current = null;
+                      buscarMetricasExistentes(novaCampanha.id, formData.data);
+                    }
                   }}
                   className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded"
                 >
@@ -1978,7 +2076,14 @@ export default function ModalEditarMetricas({
                   onChange={(e) => {
                     const id = e.target.value;
                     const cr = criativosList.find(x => x.id === id) || null;
-                    setSelectedCriativo(cr ? { id: cr.id, name: cr.name } : null);
+                    const novoCriativo = cr ? { id: cr.id, name: cr.name } : null;
+                    setSelectedCriativo(novoCriativo);
+                    
+                    // Buscar métricas quando selecionar criativo (se houver data)
+                    if (novoCriativo && formData.data) {
+                      lastLoadedDataRef.current = null;
+                      buscarMetricasPorCriativo(novoCriativo.id, formData.data);
+                    }
                   }}
                   className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded"
                 >

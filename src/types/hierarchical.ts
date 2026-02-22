@@ -174,6 +174,119 @@ export const PlataformasAds = {
   LINKEDIN: 'LinkedIn Ads' as const,
 } as const;
 
+// ============================================
+// Kommo CRM Types
+// ============================================
+
+export interface IntegracaoKommo {
+  id: string;
+  empresa_id: string;
+  nome: string;
+  subdominio: string;
+  access_token: string;
+  ativo: boolean;
+  funil_id: string | null;
+  ultima_sincronizacao: string | null;
+  erro_sincronizacao: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KommoStage {
+  id: number;
+  name: string;
+  sort: number;
+  color: string;
+  type?: number; // 0=normal, 1=closed won, 2=closed lost
+}
+
+export interface KommoPipeline {
+  id: string;
+  integracao_id: string;
+  pipeline_id_kommo: number;
+  nome: string;
+  stages: KommoStage[];
+  mapeamento_departamentos: {
+    sdr?: number[];    // stage IDs para SDR
+    closer?: number[]; // stage IDs para Closer
+  };
+  funil_id: string | null;
+  ativo: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KommoSnapshot {
+  id: string;
+  pipeline_ref_id: string;
+  data_referencia: string;
+  stage_id_kommo: number;
+  stage_nome: string;
+  quantidade_leads: number;
+  valor_total: number;
+  nomes_leads: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DetalheSDR {
+  comecou_diagnostico: number;
+  chegaram_crm_kommo: number;
+  qualificados_para_mentoria: number;
+  para_downsell: number;
+  agendados_diagnostico: number;
+  agendados_mentoria: number;
+  nomes_qualificados: string;
+}
+
+export interface DetalheCloser {
+  calls_realizadas: number;
+  nao_compareceram: number;
+  vendas_mentoria: number;
+  vendas_downsell: number;
+  em_negociacao: number;
+  em_followup: number;
+  vendas_perdidas: number;
+  lead_desqualificado: number;
+  nomes_vendas: string;
+}
+
+export interface KommoSyncLog {
+  id: string;
+  empresa_id: string;
+  integracao_id: string;
+  pipeline_id_kommo: number;
+  status: 'running' | 'success' | 'partial' | 'error';
+  periodo_inicio: string;
+  periodo_fim: string;
+  total_leads: number;
+  leads_por_estagio: Array<{
+    stage_id: number;
+    stage_nome: string;
+    quantidade: number;
+    valor: number;
+  }>;
+  erro_detalhe: string | null;
+  detalhes: Record<string, any>;
+  iniciado_em: string;
+  finalizado_em: string | null;
+}
+
+// ============================================
+// Funnel visualization types
+// ============================================
+
+export interface FunnelStageData {
+  stage_id: number;
+  stage_nome: string;
+  quantidade: number;
+  valor: number;
+  percentual_total: number;     // % em relação ao total de leads
+  taxa_conversao: number;       // % de conversão do estágio anterior
+  color: string;
+  tipo: 'active' | 'won' | 'lost';
+}
+
 // Utilitários para cálculos
 export const calcularMetricas = {
   roas: (faturamento: number, investimento: number): number => 

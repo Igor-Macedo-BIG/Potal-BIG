@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { useTheme } from '@/contexts/ThemeContext';
 import { 
   Shield, 
   Briefcase, 
@@ -77,6 +78,51 @@ const roles: RoleOption[] = [
   }
 ];
 
+const rolesClean: RoleOption[] = [
+  {
+    value: 'admin',
+    label: 'Administrador',
+    icon: Shield,
+    color: 'from-amber-600 to-amber-700',
+    gradient: 'bg-gradient-to-br from-amber-500/20 to-amber-600/20'
+  },
+  {
+    value: 'gestor',
+    label: 'Gestor de Marketing',
+    icon: Briefcase,
+    color: 'from-blue-500 to-blue-600',
+    gradient: 'bg-gradient-to-br from-blue-500/20 to-blue-600/20'
+  },
+  {
+    value: 'cs',
+    label: 'Customer Success',
+    icon: HeadphonesIcon,
+    color: 'from-emerald-500 to-emerald-600',
+    gradient: 'bg-gradient-to-br from-emerald-500/20 to-emerald-600/20'
+  },
+  {
+    value: 'sdr',
+    label: 'SDR',
+    icon: Phone,
+    color: 'from-orange-500 to-orange-600',
+    gradient: 'bg-gradient-to-br from-orange-500/20 to-orange-600/20'
+  },
+  {
+    value: 'closer',
+    label: 'Closer',
+    icon: Handshake,
+    color: 'from-rose-500 to-rose-600',
+    gradient: 'bg-gradient-to-br from-rose-500/20 to-rose-600/20'
+  },
+  {
+    value: 'social-seller',
+    label: 'Social Seller',
+    icon: Share2,
+    color: 'from-indigo-500 to-indigo-600',
+    gradient: 'bg-gradient-to-br from-indigo-500/20 to-indigo-600/20'
+  }
+];
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -84,6 +130,8 @@ export default function LoginPage() {
   const [roleSelected, setRoleSelected] = useState<UserRole | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const { isClean } = useTheme();
+  const activeRoles = isClean ? rolesClean : roles;
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -189,38 +237,10 @@ export default function LoginPage() {
       console.log('🎉 Login bem-sucedido!');
       toast.success(`Bem-vindo(a), ${userData.nome}!`);
 
-      // 6. Redirecionar baseado no role
-      console.log('🔄 Redirecionando para:', userData.role);
+      // 6. Redirecionar para Dashboard Geral
+      console.log('🔄 Redirecionando para Dashboard Geral...');
       setTimeout(() => {
-        switch (userData.role) {
-          case 'admin':
-            console.log('➡️ Redirecionando para /admin');
-            router.push('/admin');
-            break;
-          case 'gestor':
-            console.log('➡️ Redirecionando para /admin (gestor)');
-            router.push('/admin'); // Gestor também tem acesso ao admin
-            break;
-          case 'cs':
-            console.log('➡️ Redirecionando para /cs');
-            router.push('/cs');
-            break;
-          case 'sdr':
-            console.log('➡️ Redirecionando para /sdr');
-            router.push('/sdr');
-            break;
-          case 'closer':
-            console.log('➡️ Redirecionando para /closer');
-            router.push('/closer');
-            break;
-          case 'social-seller':
-            console.log('➡️ Redirecionando para /social-seller');
-            router.push('/social-seller');
-            break;
-          default:
-            console.log('➡️ Redirecionando para /');
-            router.push('/');
-        }
+        router.push('/');
       }, 1000);
 
     } catch (error: any) {
@@ -239,77 +259,108 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
+    <div className={`min-h-screen flex items-center justify-center p-4 relative overflow-hidden ${
+      isClean
+        ? 'bg-gradient-to-br from-amber-50 via-white to-gray-50'
+        : 'bg-gradient-to-br from-slate-950 via-purple-950 to-slate-900'
+    }`}>
       {/* Background Effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500/30 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-pink-500/30 rounded-full blur-3xl animate-pulse delay-1000"></div>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl animate-pulse delay-2000"></div>
+        {isClean ? (
+          <>
+            <div className="absolute -top-40 -right-40 w-80 h-80 bg-amber-200/40 rounded-full blur-3xl"></div>
+            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-amber-100/40 rounded-full blur-3xl"></div>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-amber-50/30 rounded-full blur-3xl"></div>
+          </>
+        ) : (
+          <>
+            <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500/30 rounded-full blur-3xl animate-pulse"></div>
+            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-pink-500/30 rounded-full blur-3xl animate-pulse delay-1000"></div>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl animate-pulse delay-2000"></div>
+          </>
+        )}
       </div>
 
-      {/* Particles */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {[...Array(20)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute w-1 h-1 bg-white/40 rounded-full animate-float"
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 5}s`,
-              animationDuration: `${5 + Math.random() * 10}s`
-            }}
-          />
-        ))}
-      </div>
+      {/* Particles - only on dark */}
+      {!isClean && (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {[...Array(20)].map((_, i) => (
+            <div
+              key={i}
+              className="absolute w-1 h-1 bg-white/40 rounded-full animate-float"
+              style={{
+                left: `${Math.random() * 100}%`,
+                top: `${Math.random() * 100}%`,
+                animationDelay: `${Math.random() * 5}s`,
+                animationDuration: `${5 + Math.random() * 10}s`
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="w-full max-w-6xl relative z-10">
         <div className="grid md:grid-cols-2 gap-8 items-center">
           {/* Left Side - Branding */}
-          <div className="text-center md:text-left space-y-6 order-2 md:order-1">
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 rounded-full backdrop-blur-sm">
-              <Sparkles className="h-4 w-4 text-purple-400" />
-              <span className="text-sm text-purple-200 font-medium">Plataforma Exclusiva</span>
+          <div className="text-center md:text-left space-y-6 order-1">
+            <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-sm ${
+              isClean
+                ? 'bg-amber-100/60 border border-amber-200'
+                : 'bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30'
+            }`}>
+              <Sparkles className={isClean ? 'h-4 w-4 text-amber-600' : 'h-4 w-4 text-purple-400'} />
+              <span className={isClean ? 'text-sm text-amber-700 font-medium' : 'text-sm text-purple-200 font-medium'}>Plataforma Exclusiva</span>
             </div>
 
             <h1 className="text-5xl md:text-7xl font-bold">
-              <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent animate-gradient">
+              <span className={isClean
+                ? 'bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 bg-clip-text text-transparent'
+                : 'bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent animate-gradient'
+              }>
                 PORTAL
               </span>
               <br />
-              <span className="text-white">LÍDIA CABRAL</span>
+              <span className={isClean ? 'text-gray-900' : 'text-white'}>LÍDIA CABRAL</span>
             </h1>
 
-            <p className="text-xl text-gray-300 max-w-md">
+            <p className={isClean ? 'text-xl text-gray-500 max-w-md' : 'text-xl text-gray-300 max-w-md'}>
               Sistema integrado de gestão de tráfego pago, funis e equipes comerciais.
             </p>
 
             <div className="flex flex-wrap gap-4 justify-center md:justify-start">
-              <div className="flex items-center gap-2 px-4 py-2 bg-white/10 rounded-lg backdrop-blur-sm border border-white/20">
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-lg backdrop-blur-sm border ${
+                isClean ? 'bg-white/70 border-gray-200' : 'bg-white/10 border-white/20'
+              }`}>
                 <div className="h-2 w-2 bg-green-400 rounded-full animate-pulse"></div>
-                <span className="text-sm text-gray-300">Sistema Online</span>
+                <span className={isClean ? 'text-sm text-gray-600' : 'text-sm text-gray-300'}>Sistema Online</span>
               </div>
-              <div className="flex items-center gap-2 px-4 py-2 bg-white/10 rounded-lg backdrop-blur-sm border border-white/20">
-                <Lock className="h-4 w-4 text-gray-400" />
-                <span className="text-sm text-gray-300">100% Seguro</span>
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-lg backdrop-blur-sm border ${
+                isClean ? 'bg-white/70 border-gray-200' : 'bg-white/10 border-white/20'
+              }`}>
+                <Lock className={isClean ? 'h-4 w-4 text-gray-400' : 'h-4 w-4 text-gray-400'} />
+                <span className={isClean ? 'text-sm text-gray-600' : 'text-sm text-gray-300'}>100% Seguro</span>
               </div>
             </div>
           </div>
 
           {/* Right Side - Login Form */}
-          <div className="order-1 md:order-2">
-            <div className="bg-gray-900/40 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 shadow-2xl">
+          <div className="order-2">
+            <div className={`backdrop-blur-xl rounded-2xl p-8 shadow-2xl ${
+              isClean
+                ? 'bg-white/80 border border-gray-200'
+                : 'bg-gray-900/40 border border-gray-700/50'
+            }`}>
               <div className="text-center mb-8">
-                <h2 className="text-3xl font-bold text-white mb-2">Acesse sua conta</h2>
-                <p className="text-gray-400">Selecione seu tipo de acesso abaixo</p>
+                <h2 className={`text-3xl font-bold mb-2 ${isClean ? 'text-gray-900' : 'text-white'}`}>Acesse sua conta</h2>
+                <p className={isClean ? 'text-gray-500' : 'text-gray-400'}>Selecione seu tipo de acesso abaixo</p>
               </div>
 
               <form onSubmit={handleLogin} className="space-y-6">
                 {/* Role Selection */}
                 <div>
-                  <Label className="text-white mb-3 block">Tipo de Acesso</Label>
+                  <Label className={`mb-3 block ${isClean ? 'text-gray-700' : 'text-white'}`}>Tipo de Acesso</Label>
                   <div className="grid grid-cols-2 gap-3">
-                    {roles.map((role) => {
+                    {activeRoles.map((role) => {
                       const Icon = role.icon;
                       const isSelected = roleSelected === role.value;
                       return (
@@ -318,21 +369,25 @@ export default function LoginPage() {
                           type="button"
                           onClick={() => setRoleSelected(role.value)}
                           className={`relative p-4 rounded-xl border-2 transition-all ${
-                            isSelected
-                              ? 'border-purple-500 bg-purple-500/20 scale-105'
-                              : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'
+                            isClean
+                              ? isSelected
+                                ? 'border-amber-400 bg-amber-50 scale-105 shadow-md'
+                                : 'border-gray-200 bg-gray-50 hover:border-amber-200 hover:bg-amber-50/50'
+                              : isSelected
+                                ? 'border-purple-500 bg-purple-500/20 scale-105'
+                                : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'
                           }`}
                         >
                           <div className="flex flex-col items-center gap-2">
                             <div className={`h-10 w-10 rounded-lg bg-gradient-to-br ${role.color} flex items-center justify-center`}>
                               <Icon className="h-5 w-5 text-white" />
                             </div>
-                            <span className="text-xs text-white font-medium text-center">
+                            <span className={`text-xs font-medium text-center ${isClean ? 'text-gray-700' : 'text-white'}`}>
                               {role.label}
                             </span>
                           </div>
                           {isSelected && (
-                            <div className="absolute -top-1 -right-1 h-4 w-4 bg-purple-500 rounded-full flex items-center justify-center">
+                            <div className={`absolute -top-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center ${isClean ? 'bg-amber-500' : 'bg-purple-500'}`}>
                               <div className="h-2 w-2 bg-white rounded-full"></div>
                             </div>
                           )}
@@ -344,35 +399,45 @@ export default function LoginPage() {
 
                 {/* Email */}
                 <div>
-                  <Label className="text-white mb-2 block">Email</Label>
+                  <Label className={`mb-2 block ${isClean ? 'text-gray-700' : 'text-white'}`}>Email</Label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <Mail className={`absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 ${isClean ? 'text-gray-400' : 'text-gray-400'}`} />
                     <Input
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="seu@email.com"
-                      className="pl-10 bg-gray-800/50 border-gray-700 text-white placeholder:text-gray-500 h-12"
+                      className={`pl-10 h-12 ${
+                        isClean
+                          ? 'bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-400 focus:border-amber-400 focus:ring-amber-200'
+                          : 'bg-gray-800/50 border-gray-700 text-white placeholder:text-gray-500'
+                      }`}
                     />
                   </div>
                 </div>
 
                 {/* Password */}
                 <div>
-                  <Label className="text-white mb-2 block">Senha</Label>
+                  <Label className={`mb-2 block ${isClean ? 'text-gray-700' : 'text-white'}`}>Senha</Label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 ${isClean ? 'text-gray-400' : 'text-gray-400'}`} />
                     <Input
                       type={showPassword ? 'text' : 'password'}
                       value={senha}
                       onChange={(e) => setSenha(e.target.value)}
                       placeholder="••••••••"
-                      className="pl-10 pr-10 bg-gray-800/50 border-gray-700 text-white placeholder:text-gray-500 h-12"
+                      className={`pl-10 pr-10 h-12 ${
+                        isClean
+                          ? 'bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-400 focus:border-amber-400 focus:ring-amber-200'
+                          : 'bg-gray-800/50 border-gray-700 text-white placeholder:text-gray-500'
+                      }`}
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                      className={`absolute right-3 top-1/2 -translate-y-1/2 transition-colors ${
+                        isClean ? 'text-gray-400 hover:text-gray-700' : 'text-gray-400 hover:text-white'
+                      }`}
                     >
                       {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     </button>
@@ -383,7 +448,11 @@ export default function LoginPage() {
                 <Button
                   type="submit"
                   disabled={loading}
-                  className="w-full h-12 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold text-lg group"
+                  className={`w-full h-12 text-white font-semibold text-lg group ${
+                    isClean
+                      ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 shadow-lg shadow-amber-200/50'
+                      : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700'
+                  }`}
                 >
                   {loading ? (
                     <div className="flex items-center gap-2">
@@ -399,9 +468,9 @@ export default function LoginPage() {
                 </Button>
 
                 {/* Footer */}
-                <p className="text-center text-sm text-gray-500">
+                <p className={`text-center text-sm ${isClean ? 'text-gray-400' : 'text-gray-500'}`}>
                   Não tem acesso?{' '}
-                  <button type="button" className="text-purple-400 hover:text-purple-300 font-medium">
+                  <button type="button" className={`font-medium ${isClean ? 'text-amber-600 hover:text-amber-500' : 'text-purple-400 hover:text-purple-300'}`}>
                     Solicitar cadastro
                   </button>
                 </p>

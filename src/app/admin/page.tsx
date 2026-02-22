@@ -3,6 +3,9 @@
 import { useState, useEffect } from 'react';
 import { LayoutComFunis } from '@/components/layout/LayoutComFunis';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { MetaIntegrationCard } from '@/components/admin/MetaIntegrationCard';
+import { TypebotIntegrationCard } from '@/components/admin/TypebotIntegrationCard';
+import { KommoIntegrationCard } from '@/components/admin/KommoIntegrationCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -115,7 +118,7 @@ const roleIcons: Record<UserRole, any> = {
   trafego: Megaphone
 };
 
-const roleColors: Record<UserRole, string> = {
+const roleColorsDark: Record<UserRole, string> = {
   admin: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
   gestor: 'bg-blue-600/20 text-blue-300 border-blue-600/30',
   sdr: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
@@ -125,8 +128,19 @@ const roleColors: Record<UserRole, string> = {
   trafego: 'bg-pink-500/20 text-pink-300 border-pink-500/30'
 };
 
+const roleColorsClean: Record<UserRole, string> = {
+  admin: 'bg-purple-50 text-purple-700 border-purple-200',
+  gestor: 'bg-blue-50 text-blue-700 border-blue-200',
+  sdr: 'bg-blue-50 text-blue-700 border-blue-200',
+  closer: 'bg-green-50 text-green-700 border-green-200',
+  'social-seller': 'bg-cyan-50 text-cyan-700 border-cyan-200',
+  cs: 'bg-orange-50 text-orange-700 border-orange-200',
+  trafego: 'bg-pink-50 text-pink-700 border-pink-200'
+};
+
 export default function PainelAdmin() {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, isClean } = useTheme();
+  const roleColors = isClean ? roleColorsClean : roleColorsDark;
   const [activeTab, setActiveTab] = useState('usuarios');
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [funis, setFunis] = useState<Funil[]>([]);
@@ -430,68 +444,18 @@ export default function PainelAdmin() {
   const carregarFunis = async () => {
     setLoading(true);
     try {
-      const { data: funisData, error: errorFunis } = await supabase
-        .from('funis')
-        .select('*')
-        .eq('empresa_id', '550e8400-e29b-41d4-a716-446655440000')
-        .order('created_at', { ascending: false });
-
-      if (errorFunis) throw errorFunis;
-
-      const { data: campanhasData, error: errorCampanhas } = await supabase
-        .from('campanhas')
-        .select('*')
-        .in('funil_id', funisData?.map(f => f.id) || [])
-        .order('created_at', { ascending: false });
-
-      if (errorCampanhas) throw errorCampanhas;
-
-      // Carregar conjuntos de anúncio
-      const campanhaIds = campanhasData?.map(c => c.id) || [];
+      // Buscar dados via API route (não direto do Supabase)
+      const response = await fetch('/api/funis');
       
-      const { data: conjuntosData } = await supabase
-        .from('conjuntos_anuncio')
-        .select('*')
-        .in('campanha_id', campanhaIds);
+      if (!response.ok) {
+        throw new Error('Erro ao carregar dados');
+      }
 
-      // Carregar anúncios
-      const conjuntoIds = conjuntosData?.map(c => c.id) || [];
-      
-      const { data: anunciosData } = await supabase
-        .from('anuncios')
-        .select('*')
-        .in('conjunto_anuncio_id', conjuntoIds);
+      const data = await response.json();
 
-      // Associar anúncios aos conjuntos
-      const conjuntosComAnuncios = conjuntosData?.map(conjunto => ({
-        ...conjunto,
-        anuncios: anunciosData?.filter(a => a.conjunto_anuncio_id === conjunto.id) || []
-      })) || [];
-
-      // Associar conjuntos às campanhas
-      const campanhasComConjuntos = campanhasData?.map(campanha => ({
-        ...campanha,
-        conjuntos_anuncio: conjuntosComAnuncios?.filter(c => c.campanha_id === campanha.id) || []
-      })) || [];
-
-      // Agrupar campanhas por funil
-      const agrupadas: Record<string, Campanha[]> = {};
-      campanhasComConjuntos?.forEach(campanha => {
-        if (!agrupadas[campanha.funil_id]) {
-          agrupadas[campanha.funil_id] = [];
-        }
-        agrupadas[campanha.funil_id].push(campanha);
-      });
-
-      // Adicionar contagem de campanhas aos funis
-      const funisComContagem = funisData?.map(funil => ({
-        ...funil,
-        campanhas_count: agrupadas[funil.id]?.length || 0
-      })) || [];
-
-      setFunis(funisComContagem);
-      setCampanhasPorFunil(agrupadas);
-      setCampanhas(campanhasComConjuntos || []);
+      setFunis(data.funis || []);
+      setCampanhasPorFunil(data.campanhasPorFunil || {});
+      setCampanhas(data.campanhas || []);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
       toast.error('Erro ao carregar dados');
@@ -981,37 +945,37 @@ export default function PainelAdmin() {
 
   return (
     <LayoutComFunis>
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
+      <div className={`min-h-screen p-6 ${isClean ? 'bg-gray-50' : 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900'}`}>
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-2">
-              <div className="h-12 w-12 bg-gradient-to-br from-purple-600 to-pink-600 rounded-xl flex items-center justify-center">
+              <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${isClean ? 'bg-gradient-to-br from-amber-600 to-amber-700' : 'bg-gradient-to-br from-purple-600 to-pink-600'}`}>
                 <Shield className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold text-white">Painel Administrativo</h1>
-                <p className="text-gray-400">Gerencie usuários, funis e campanhas</p>
+                <h1 className={`text-3xl font-bold ${isClean ? 'text-gray-900' : 'text-white'}`}>Painel Administrativo</h1>
+                <p className={isClean ? 'text-gray-500' : 'text-gray-400'}>Gerencie usuários, funis e campanhas</p>
               </div>
             </div>
           </div>
 
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="bg-gray-800/50 border border-gray-700">
-              <TabsTrigger value="usuarios" className="data-[state=active]:bg-purple-600">
+            <TabsList className={isClean ? 'bg-white border border-gray-200 shadow-sm' : 'bg-gray-800/50 border border-gray-700'}>
+              <TabsTrigger value="usuarios" className={isClean ? 'data-[state=active]:bg-amber-600 data-[state=active]:text-white' : 'data-[state=active]:bg-purple-600'}>
                 <Users className="h-4 w-4 mr-2" />
                 Usuários
               </TabsTrigger>
-              <TabsTrigger value="funis" className="data-[state=active]:bg-cyan-600">
+              <TabsTrigger value="funis" className={isClean ? 'data-[state=active]:bg-amber-600 data-[state=active]:text-white' : 'data-[state=active]:bg-cyan-600'}>
                 <Layers className="h-4 w-4 mr-2" />
                 Funis
               </TabsTrigger>
-              <TabsTrigger value="aparencia" className="data-[state=active]:bg-pink-600">
+              <TabsTrigger value="aparencia" className={isClean ? 'data-[state=active]:bg-amber-600 data-[state=active]:text-white' : 'data-[state=active]:bg-pink-600'}>
                 <Palette className="h-4 w-4 mr-2" />
                 Aparência
               </TabsTrigger>
-              <TabsTrigger value="configuracoes" className="data-[state=active]:bg-gray-600">
+              <TabsTrigger value="configuracoes" className={isClean ? 'data-[state=active]:bg-amber-600 data-[state=active]:text-white' : 'data-[state=active]:bg-gray-600'}>
                 <Settings className="h-4 w-4 mr-2" />
                 Configurações
               </TabsTrigger>
@@ -1019,15 +983,15 @@ export default function PainelAdmin() {
 
             {/* Tab: Usuários */}
             <TabsContent value="usuarios" className="space-y-4">
-              <Card className="bg-gray-800/50 border-gray-700">
+              <Card className={isClean ? 'bg-white border border-gray-200/60 shadow-sm' : 'bg-gray-800/50 border-gray-700'}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle className="text-white flex items-center gap-2">
+                      <CardTitle className={`flex items-center gap-2 ${isClean ? 'text-gray-900' : 'text-white'}`}>
                         <Users className="h-5 w-5" />
                         Gerenciar Usuários
                       </CardTitle>
-                      <CardDescription className="text-gray-400">
+                      <CardDescription className={isClean ? 'text-gray-500' : 'text-gray-400'}>
                         Crie e gerencie usuários do sistema
                       </CardDescription>
                     </div>
@@ -1035,14 +999,14 @@ export default function PainelAdmin() {
                       <Button
                         onClick={() => carregarUsuarios()}
                         variant="outline"
-                        className="border-gray-600"
+                        className={isClean ? 'border-gray-200' : 'border-gray-600'}
                         disabled={loading}
                       >
                         {loading ? 'Carregando...' : 'Recarregar'}
                       </Button>
                       <Button
                         onClick={() => setModalUsuarioAberto(true)}
-                        className="bg-purple-600 hover:bg-purple-700"
+                        className={isClean ? 'bg-amber-600 hover:bg-amber-700' : 'bg-purple-600 hover:bg-purple-700'}
                       >
                         <Plus className="h-4 w-4 mr-2" />
                         Novo Usuário
@@ -1053,12 +1017,12 @@ export default function PainelAdmin() {
                 <CardContent className="space-y-4">
                   {/* Search */}
                   <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Search className={`absolute left-3 top-3 h-4 w-4 ${isClean ? 'text-gray-400' : 'text-gray-400'}`} />
                     <Input
                       placeholder="Buscar usuários..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10 bg-gray-900 border-gray-600 text-white"
+                      className={`pl-10 ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-900 border-gray-600 text-white'}`}
                     />
                   </div>
 
@@ -1070,7 +1034,7 @@ export default function PainelAdmin() {
                   {/* User List */}
                   <div className="grid gap-3">
                     {usuarios.length === 0 ? (
-                      <div className="text-center py-8 text-gray-400">
+                      <div className={`text-center py-8 ${isClean ? 'text-gray-400' : 'text-gray-400'}`}>
                         <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
                         <p>Nenhum usuário encontrado</p>
                         <p className="text-xs mt-1">Clique em "Novo Usuário" para adicionar</p>
@@ -1086,16 +1050,16 @@ export default function PainelAdmin() {
                           return (
                             <div
                               key={usuario.id}
-                              className="bg-gray-900/50 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors"
+                              className={`rounded-lg p-4 transition-colors ${isClean ? 'bg-gray-50 border border-gray-200 hover:border-gray-300' : 'bg-gray-900/50 border border-gray-700 hover:border-gray-600'}`}
                             >
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                  <div className="h-10 w-10 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full flex items-center justify-center">
+                                  <div className={`h-10 w-10 rounded-full flex items-center justify-center ${isClean ? 'bg-gradient-to-br from-amber-600 to-amber-700' : 'bg-gradient-to-br from-purple-600 to-pink-600'}`}>
                                     <IconRole className="h-5 w-5 text-white" />
                                   </div>
                               <div>
-                                <h4 className="text-white font-medium">{usuario.nome}</h4>
-                                <p className="text-sm text-gray-400">{usuario.email}</p>
+                                <h4 className={`font-medium ${isClean ? 'text-gray-900' : 'text-white'}`}>{usuario.nome}</h4>
+                                <p className={`text-sm ${isClean ? 'text-gray-500' : 'text-gray-400'}`}>{usuario.email}</p>
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -1112,7 +1076,7 @@ export default function PainelAdmin() {
                               <Button 
                                 size="sm" 
                                 variant="ghost" 
-                                className="text-gray-400 hover:text-white"
+                                className={isClean ? 'text-gray-400 hover:text-gray-700' : 'text-gray-400 hover:text-white'}
                                 onClick={() => handleEditarUsuario(usuario)}
                                 disabled={loading}
                               >
@@ -1139,22 +1103,22 @@ export default function PainelAdmin() {
 
             {/* Tab: Funis */}
             <TabsContent value="funis" className="space-y-4">
-              <Card className="bg-gray-800/50 border-gray-700">
+              <Card className={isClean ? 'bg-white border border-gray-200/60 shadow-sm' : 'bg-gray-800/50 border-gray-700'}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle className="text-white flex items-center gap-2">
+                      <CardTitle className={`flex items-center gap-2 ${isClean ? 'text-gray-900' : 'text-white'}`}>
                         <Layers className="h-5 w-5" />
                         Gerenciar Funis
                       </CardTitle>
-                      <CardDescription className="text-gray-400">
+                      <CardDescription className={isClean ? 'text-gray-500' : 'text-gray-400'}>
                         Crie e organize seus funis de vendas
                       </CardDescription>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Button
                         onClick={() => setModalFunilAberto(true)}
-                        className="bg-cyan-600 hover:bg-cyan-700"
+                        className={isClean ? 'bg-amber-600 hover:bg-amber-700' : 'bg-cyan-600 hover:bg-cyan-700'}
                       >
                         <Plus className="h-4 w-4 mr-2" />
                         Novo Funil
@@ -1165,7 +1129,7 @@ export default function PainelAdmin() {
                           setNovaCampanha({ nome: '', funil_id: '' });
                           setModalCampanhaAberto(true);
                         }}
-                        className="bg-blue-600 hover:bg-blue-700"
+                        className={isClean ? 'bg-blue-500 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-700'}
                       >
                         <Plus className="h-4 w-4 mr-2" />
                         Nova Campanha
@@ -1175,7 +1139,7 @@ export default function PainelAdmin() {
                           setCampanhaSelecionadaParaConjunto('');
                           setModalConjuntoAberto(true);
                         }}
-                        className="bg-green-600 hover:bg-green-700"
+                        className={isClean ? 'bg-green-500 hover:bg-green-600' : 'bg-green-600 hover:bg-green-700'}
                       >
                         <Plus className="h-4 w-4 mr-2" />
                         Novo Conjunto
@@ -1185,7 +1149,7 @@ export default function PainelAdmin() {
                           setConjuntoSelecionadoParaAnuncio('');
                           setModalAnuncioAberto(true);
                         }}
-                        className="bg-purple-600 hover:bg-purple-700"
+                        className={isClean ? 'bg-purple-500 hover:bg-purple-600' : 'bg-purple-600 hover:bg-purple-700'}
                       >
                         <Plus className="h-4 w-4 mr-2" />
                         Novo Anúncio
@@ -1202,7 +1166,7 @@ export default function PainelAdmin() {
                       return (
                         <div key={funil.id} className="space-y-2">
                           <div
-                            className="bg-gray-900/50 border border-gray-700 rounded-lg p-4 hover:border-orange-600/50 transition-colors cursor-pointer"
+                            className={`rounded-lg p-4 transition-colors cursor-pointer ${isClean ? 'bg-gray-50 border border-gray-200 hover:border-amber-300' : 'bg-gray-900/50 border border-gray-700 hover:border-orange-600/50'}`}
                             onClick={() => toggleFunil(funil.id)}
                           >
                             <div className="flex items-center justify-between">
@@ -1223,15 +1187,15 @@ export default function PainelAdmin() {
                                   )}
                                 </Button>
                                 <div>
-                                  <h4 className="text-white font-medium flex items-center gap-2">
-                                    <Layers className="h-4 w-4 text-cyan-400" />
+                                  <h4 className={`font-medium flex items-center gap-2 ${isClean ? 'text-gray-900' : 'text-white'}`}>
+                                    <Layers className={isClean ? 'h-4 w-4 text-amber-600' : 'h-4 w-4 text-cyan-400'} />
                                     {funil.nome}
                                   </h4>
                                   {funil.descricao && (
-                                    <p className="text-sm text-gray-400 mt-1">{funil.descricao}</p>
+                                    <p className={`text-sm mt-1 ${isClean ? 'text-gray-500' : 'text-gray-400'}`}>{funil.descricao}</p>
                                   )}
                                   <div className="flex items-center gap-2 mt-2">
-                                    <Badge variant="outline" className="text-xs text-gray-300 border-gray-600">
+                                    <Badge variant="outline" className={`text-xs ${isClean ? 'text-gray-600 border-gray-300' : 'text-gray-300 border-gray-600'}`}>
                                       {funil.campanhas_count} campanhas
                                     </Badge>
                                   </div>
@@ -1241,7 +1205,7 @@ export default function PainelAdmin() {
                                 <Button 
                                   size="sm" 
                                   variant="ghost" 
-                                  className="text-cyan-400 hover:text-cyan-300"
+                                  className={isClean ? 'text-amber-600 hover:text-amber-700' : 'text-cyan-400 hover:text-cyan-300'}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setFunilSelecionadoParaCampanha(funil.id);
@@ -1255,7 +1219,7 @@ export default function PainelAdmin() {
                                 <Button 
                                   size="sm" 
                                   variant="ghost" 
-                                  className="text-gray-400 hover:text-white"
+                                  className={isClean ? 'text-gray-400 hover:text-gray-700' : 'text-gray-400 hover:text-white'}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleEditarFunil(funil);
@@ -1282,7 +1246,7 @@ export default function PainelAdmin() {
 
                           {/* Campanhas do funil */}
                           {isExpanded && campanhasDeste.length > 0 && (
-                            <div className="ml-8 space-y-2 border-l-2 border-orange-600/30 pl-4">
+                            <div className={`ml-8 space-y-2 border-l-2 pl-4 ${isClean ? 'border-amber-200' : 'border-orange-600/30'}`}>
                               {campanhasDeste.map((campanha) => {
                                 const campanhaExpandida = campanhasExpandidas.has(campanha.id);
                                 const temConjuntos = campanha.conjuntos_anuncio && campanha.conjuntos_anuncio.length > 0;
@@ -1290,7 +1254,7 @@ export default function PainelAdmin() {
                                 return (
                                   <div key={campanha.id}>
                                     <div
-                                      className="bg-gray-900/30 border border-gray-700/50 rounded-lg p-3 hover:border-blue-600/50 transition-colors cursor-pointer"
+                                      className={`rounded-lg p-3 transition-colors cursor-pointer ${isClean ? 'bg-white border border-gray-200 hover:border-blue-300 shadow-sm' : 'bg-gray-900/30 border border-gray-700/50 hover:border-blue-600/50'}`}
                                       onClick={() => toggleCampanha(campanha.id)}
                                     >
                                       <div className="flex items-center justify-between">
@@ -1300,7 +1264,7 @@ export default function PainelAdmin() {
                                               <ChevronDown className="h-3 w-3 text-gray-400" /> : 
                                               <ChevronRight className="h-3 w-3 text-gray-400" />
                                           )}
-                                          <h5 className="text-white text-sm font-medium flex items-center gap-2">
+                                          <h5 className={`text-sm font-medium flex items-center gap-2 ${isClean ? 'text-gray-900' : 'text-white'}`}>
                                             <Target className="h-3 w-3 text-blue-400" />
                                             {campanha.nome}
                                           </h5>
@@ -1327,7 +1291,7 @@ export default function PainelAdmin() {
                                           <Button 
                                             size="sm" 
                                             variant="ghost" 
-                                            className="h-6 w-6 p-0 text-gray-400 hover:text-white"
+                                            className={`h-6 w-6 p-0 ${isClean ? 'text-gray-400 hover:text-gray-700' : 'text-gray-400 hover:text-white'}`}
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               handleEditarCampanha(campanha);
@@ -1354,7 +1318,7 @@ export default function PainelAdmin() {
 
                                     {/* Conjuntos da campanha */}
                                     {campanhaExpandida && temConjuntos && (
-                                      <div className="ml-6 mt-2 space-y-2 border-l-2 border-blue-600/30 pl-4">
+                                      <div className={`ml-6 mt-2 space-y-2 border-l-2 pl-4 ${isClean ? 'border-blue-200' : 'border-blue-600/30'}`}>
                                         {campanha.conjuntos_anuncio!.map((conjunto) => {
                                           const conjuntoExpandido = conjuntosExpandidos.has(conjunto.id);
                                           const temAnuncios = conjunto.anuncios && conjunto.anuncios.length > 0;
@@ -1362,7 +1326,7 @@ export default function PainelAdmin() {
                                           return (
                                             <div key={conjunto.id}>
                                               <div 
-                                                className="bg-gray-900/20 border border-gray-700/30 rounded-md p-2 hover:border-green-600/40 transition-colors cursor-pointer"
+                                                className={`rounded-md p-2 transition-colors cursor-pointer ${isClean ? 'bg-gray-50 border border-gray-200 hover:border-green-300' : 'bg-gray-900/20 border border-gray-700/30 hover:border-green-600/40'}`}
                                                 onClick={() => toggleConjunto(conjunto.id)}
                                               >
                                                 <div className="flex items-center justify-between">
@@ -1373,7 +1337,7 @@ export default function PainelAdmin() {
                                                         <ChevronRight className="h-2.5 w-2.5 text-gray-400" />
                                                     )}
                                                     <Users className="h-3 w-3 text-green-400" />
-                                                    <span className="text-white text-xs">{conjunto.nome}</span>
+                                                    <span className={`text-xs ${isClean ? 'text-gray-900' : 'text-white'}`}>{conjunto.nome}</span>
                                                     {temAnuncios && (
                                                       <span className="text-xs text-gray-500">
                                                         ({conjunto.anuncios?.length || 0} anúncios)
@@ -1414,7 +1378,7 @@ export default function PainelAdmin() {
                                                     <Button 
                                                       size="sm" 
                                                       variant="ghost" 
-                                                      className="h-5 w-5 p-0 text-gray-400 hover:text-white"
+                                                      className={`h-5 w-5 p-0 ${isClean ? 'text-gray-400 hover:text-gray-700' : 'text-gray-400 hover:text-white'}`}
                                                       onClick={(e) => {
                                                         e.stopPropagation();
                                                         handleEditarConjunto(conjunto);
@@ -1441,16 +1405,16 @@ export default function PainelAdmin() {
 
                                               {/* Anúncios do conjunto */}
                                               {conjuntoExpandido && temAnuncios && (
-                                                <div className="ml-4 mt-1 space-y-1 border-l-2 border-green-600/30 pl-3">
+                                                <div className={`ml-4 mt-1 space-y-1 border-l-2 pl-3 ${isClean ? 'border-green-200' : 'border-green-600/30'}`}>
                                                   {conjunto.anuncios!.map((anuncio) => (
                                                     <div 
                                                       key={anuncio.id}
-                                                      className="bg-gray-900/10 border border-gray-700/20 rounded p-1.5 hover:border-purple-600/40 transition-colors"
+                                                      className={`rounded p-1.5 transition-colors ${isClean ? 'bg-white border border-gray-200 hover:border-purple-300' : 'bg-gray-900/10 border border-gray-700/20 hover:border-purple-600/40'}`}
                                                     >
                                                       <div className="flex items-center justify-between">
                                                         <div className="flex items-center gap-1.5">
                                                           <Sparkles className="h-2.5 w-2.5 text-purple-400" />
-                                                          <span className="text-white text-xs">{anuncio.nome}</span>
+                                                          <span className={`text-xs ${isClean ? 'text-gray-900' : 'text-white'}`}>{anuncio.nome}</span>
                                                           {anuncio.tipo && (
                                                             <Badge variant="outline" className="text-xs h-4 px-1">
                                                               {anuncio.tipo}
@@ -1461,7 +1425,7 @@ export default function PainelAdmin() {
                                                           <Button 
                                                             size="sm" 
                                                             variant="ghost" 
-                                                            className="h-4 w-4 p-0 text-gray-400 hover:text-white"
+                                                            className={`h-4 w-4 p-0 ${isClean ? 'text-gray-400 hover:text-gray-700' : 'text-gray-400 hover:text-white'}`}
                                                             onClick={(e) => e.stopPropagation()}
                                                           >
                                                             <Edit className="h-2 w-2" />
@@ -1502,11 +1466,11 @@ export default function PainelAdmin() {
                   {/* Empty state */}
                   {funis.length === 0 && !loading && (
                     <div className="text-center py-12">
-                      <Layers className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-                      <p className="text-gray-400 mb-4">Nenhum funil cadastrado</p>
+                      <Layers className={`h-12 w-12 mx-auto mb-4 ${isClean ? 'text-gray-300' : 'text-gray-600'}`} />
+                      <p className={`mb-4 ${isClean ? 'text-gray-500' : 'text-gray-400'}`}>Nenhum funil cadastrado</p>
                       <Button
                         onClick={() => setModalFunilAberto(true)}
-                        className="bg-cyan-600 hover:bg-cyan-700"
+                        className={isClean ? 'bg-amber-600 hover:bg-amber-700' : 'bg-cyan-600 hover:bg-cyan-700'}
                       >
                         <Plus className="h-4 w-4 mr-2" />
                         Criar Primeiro Funil
@@ -1519,97 +1483,22 @@ export default function PainelAdmin() {
 
             {/* Tab: Aparência */}
             <TabsContent value="aparencia" className="space-y-4">
-              <Card className="bg-gray-800/50 border-gray-700">
+              <Card className={`admin-card ${isClean ? 'bg-white border border-gray-200/60 shadow-sm' : 'bg-gray-800/50 border-gray-700'}`}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle className="text-white flex items-center gap-2">
+                      <CardTitle className={`admin-card-title flex items-center gap-2 ${isClean ? 'text-gray-900' : 'text-white'}`}>
                         <Palette className="h-5 w-5" />
                         Tema do Painel
                       </CardTitle>
-                      <CardDescription className="text-gray-400">
-                        Personalize a aparência do sistema
+                      <CardDescription className={`admin-card-desc ${isClean ? 'text-gray-500' : 'text-gray-400'}`}>
+                        Escolha entre o tema escuro ou claro
                       </CardDescription>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Tema Sistema (atual) */}
-                    <button
-                      onClick={() => {
-                        setTheme('sistema');
-                        toast.success('Tema alterado para Sistema');
-                      }}
-                      className={`group relative overflow-hidden rounded-xl border-2 transition-all ${
-                        theme === 'sistema' 
-                          ? 'border-blue-500 shadow-lg shadow-blue-500/20' 
-                          : 'border-gray-700 hover:border-gray-600'
-                      }`}
-                    >
-                      <div className="aspect-[4/3] bg-gradient-to-br from-slate-900 via-gray-900 to-black p-6">
-                        <div className="space-y-3">
-                          <div className="h-4 w-20 bg-blue-600 rounded"></div>
-                          <div className="space-y-2">
-                            <div className="h-2 bg-gray-700 rounded w-full"></div>
-                            <div className="h-2 bg-gray-700 rounded w-3/4"></div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 mt-4">
-                            <div className="h-12 bg-gray-800/50 rounded border border-gray-700"></div>
-                            <div className="h-12 bg-gray-800/50 rounded border border-gray-700"></div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="p-4 bg-gray-900/50">
-                        <h3 className="font-semibold text-white flex items-center gap-2">
-                          Sistema
-                          {theme === 'sistema' && (
-                            <Badge className="bg-blue-600 text-xs">Ativo</Badge>
-                          )}
-                        </h3>
-                        <p className="text-sm text-gray-400 mt-1">
-                          Tema dark tecnológico atual
-                        </p>
-                      </div>
-                    </button>
-
-                    {/* Tema Clean (Lídia Cabral) */}
-                    <button
-                      onClick={() => {
-                        setTheme('clean');
-                        toast.success('Tema alterado para Clean');
-                      }}
-                      className={`group relative overflow-hidden rounded-xl border-2 transition-all ${
-                        theme === 'clean' 
-                          ? 'border-pink-500 shadow-lg shadow-pink-500/20' 
-                          : 'border-gray-700 hover:border-gray-600'
-                      }`}
-                    >
-                      <div className="aspect-[4/3] bg-gradient-to-br from-rose-50 via-pink-50 to-orange-50 p-6">
-                        <div className="space-y-3">
-                          <div className="h-4 w-20 bg-blue-600 rounded"></div>
-                          <div className="space-y-2">
-                            <div className="h-2 bg-gray-300 rounded w-full"></div>
-                            <div className="h-2 bg-gray-300 rounded w-3/4"></div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 mt-4">
-                            <div className="h-12 bg-white rounded border border-gray-300 shadow-sm"></div>
-                            <div className="h-12 bg-white rounded border border-gray-300 shadow-sm"></div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="p-4 bg-white border-t border-gray-200">
-                        <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                          Clean
-                          {theme === 'clean' && (
-                            <Badge className="bg-blue-600 text-xs">Ativo</Badge>
-                          )}
-                        </h3>
-                        <p className="text-sm text-gray-600 mt-1">
-                          Moderno e profissional
-                        </p>
-                      </div>
-                    </button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl">
 
                     {/* Tema Dark */}
                     <button
@@ -1617,37 +1506,98 @@ export default function PainelAdmin() {
                         setTheme('dark');
                         toast.success('Tema alterado para Dark');
                       }}
-                      className={`group relative overflow-hidden rounded-xl border-2 transition-all ${
+                      className={`group relative overflow-hidden rounded-2xl border-2 transition-all duration-300 ${
                         theme === 'dark' 
-                          ? 'border-purple-500 shadow-lg shadow-purple-500/20' 
-                          : 'border-gray-700 hover:border-gray-600'
+                          ? 'border-purple-500 shadow-xl shadow-purple-500/20 scale-[1.02]' 
+                          : 'border-gray-700 hover:border-gray-500 hover:shadow-lg'
                       }`}
                     >
-                      <div className="aspect-[4/3] bg-gradient-to-br from-gray-950 via-black to-gray-900 p-6">
+                      <div className="aspect-[16/10] bg-gradient-to-br from-gray-950 via-slate-900 to-gray-900 p-6 relative overflow-hidden">
+                        <div className="absolute top-3 right-3 flex space-x-1">
+                          <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
+                          <div className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse animation-delay-200"></div>
+                        </div>
                         <div className="space-y-3">
-                          <div className="h-4 w-20 bg-purple-600 rounded"></div>
-                          <div className="space-y-2">
-                            <div className="h-2 bg-gray-800 rounded w-full"></div>
-                            <div className="h-2 bg-gray-800 rounded w-3/4"></div>
+                          <div className="h-3 w-16 bg-purple-600/60 rounded-full"></div>
+                          <div className="space-y-1.5">
+                            <div className="h-2 bg-gray-700 rounded w-full"></div>
+                            <div className="h-2 bg-gray-700/60 rounded w-3/4"></div>
                           </div>
-                          <div className="grid grid-cols-2 gap-2 mt-4">
-                            <div className="h-12 bg-gray-900 rounded border border-gray-800"></div>
-                            <div className="h-12 bg-gray-900 rounded border border-gray-800"></div>
+                          <div className="grid grid-cols-3 gap-2 mt-4">
+                            <div className="h-10 bg-gray-800/80 rounded-lg border border-gray-700/50">
+                              <div className="h-1 mx-2 mt-3 bg-cyan-500/30 rounded-full"></div>
+                            </div>
+                            <div className="h-10 bg-gray-800/80 rounded-lg border border-gray-700/50">
+                              <div className="h-1 mx-2 mt-3 bg-purple-500/30 rounded-full"></div>
+                            </div>
+                            <div className="h-10 bg-gray-800/80 rounded-lg border border-gray-700/50">
+                              <div className="h-1 mx-2 mt-3 bg-emerald-500/30 rounded-full"></div>
+                            </div>
                           </div>
                         </div>
                       </div>
                       <div className="p-4 bg-gray-950">
-                        <h3 className="font-semibold text-white flex items-center gap-2">
+                        <h3 className="font-bold text-white flex items-center gap-2 text-base">
                           Dark
                           {theme === 'dark' && (
                             <Badge className="bg-purple-600 text-xs">Ativo</Badge>
                           )}
                         </h3>
                         <p className="text-sm text-gray-400 mt-1">
-                          Minimalista e profissional
+                          Sofisticado e tecnológico
                         </p>
                       </div>
                     </button>
+
+                    {/* Tema Clean */}
+                    <button
+                      onClick={() => {
+                        setTheme('clean');
+                        toast.success('Tema alterado para Clean');
+                      }}
+                      className={`group relative overflow-hidden rounded-2xl border-2 transition-all duration-300 ${
+                        theme === 'clean' 
+                          ? 'border-rose-400 shadow-xl shadow-rose-400/20 scale-[1.02]' 
+                          : 'border-gray-700 hover:border-gray-500 hover:shadow-lg'
+                      }`}
+                    >
+                      <div className="aspect-[16/10] bg-gradient-to-br from-stone-50 via-rose-50/50 to-orange-50/30 p-6 relative overflow-hidden">
+                        <div className="absolute top-3 right-3 flex space-x-1">
+                          <div className="w-2 h-2 bg-rose-400 rounded-full"></div>
+                          <div className="w-2 h-2 bg-amber-400 rounded-full"></div>
+                        </div>
+                        <div className="space-y-3">
+                          <div className="h-3 w-16 bg-rose-400/40 rounded-full"></div>
+                          <div className="space-y-1.5">
+                            <div className="h-2 bg-stone-200/80 rounded w-full"></div>
+                            <div className="h-2 bg-stone-200/50 rounded w-3/4"></div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 mt-4">
+                            <div className="h-10 bg-white rounded-lg border border-stone-200 shadow-sm">
+                              <div className="h-1 mx-2 mt-3 bg-rose-300/50 rounded-full"></div>
+                            </div>
+                            <div className="h-10 bg-white rounded-lg border border-stone-200 shadow-sm">
+                              <div className="h-1 mx-2 mt-3 bg-amber-300/50 rounded-full"></div>
+                            </div>
+                            <div className="h-10 bg-white rounded-lg border border-stone-200 shadow-sm">
+                              <div className="h-1 mx-2 mt-3 bg-rose-200/50 rounded-full"></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-4 bg-white border-t border-stone-100">
+                        <h3 className="font-bold text-stone-800 flex items-center gap-2 text-base">
+                          Clean
+                          {theme === 'clean' && (
+                            <Badge className="bg-rose-500 text-white text-xs">Ativo</Badge>
+                          )}
+                        </h3>
+                        <p className="text-sm text-stone-500 mt-1">
+                          Elegante e sofisticado
+                        </p>
+                      </div>
+                    </button>
+
                   </div>
                 </CardContent>
               </Card>
@@ -1655,21 +1605,21 @@ export default function PainelAdmin() {
 
             {/* Tab: Campanhas */}
             <TabsContent value="campanhas" className="space-y-4">
-              <Card className="bg-gray-800/50 border-gray-700">
+              <Card className={isClean ? 'bg-white border border-gray-200/60 shadow-sm' : 'bg-gray-800/50 border-gray-700'}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
-                      <CardTitle className="text-white flex items-center gap-2">
+                      <CardTitle className={`flex items-center gap-2 ${isClean ? 'text-gray-900' : 'text-white'}`}>
                         <Target className="h-5 w-5" />
                         Gerenciar Campanhas
                       </CardTitle>
-                      <CardDescription className="text-gray-400">
+                      <CardDescription className={isClean ? 'text-gray-500' : 'text-gray-400'}>
                         Crie e gerencie campanhas de marketing
                       </CardDescription>
                     </div>
                     <Button
                       onClick={() => setModalCampanhaAberto(true)}
-                      className="bg-blue-600 hover:bg-blue-700"
+                      className={isClean ? 'bg-blue-500 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-700'}
                     >
                       <Plus className="h-4 w-4 mr-2" />
                       Nova Campanha
@@ -1686,15 +1636,15 @@ export default function PainelAdmin() {
                     ].map((campanha) => (
                       <div
                         key={campanha.id}
-                        className="bg-gray-900/50 border border-gray-700 rounded-lg p-4 hover:border-blue-600/50 transition-colors"
+                        className={`rounded-lg p-4 transition-colors ${isClean ? 'bg-gray-50 border border-gray-200 hover:border-blue-300' : 'bg-gray-900/50 border border-gray-700 hover:border-blue-600/50'}`}
                       >
                         <div className="flex items-center justify-between">
                           <div>
-                            <h4 className="text-white font-medium flex items-center gap-2">
+                            <h4 className={`font-medium flex items-center gap-2 ${isClean ? 'text-gray-900' : 'text-white'}`}>
                               <Target className="h-4 w-4 text-blue-400" />
                               {campanha.nome}
                             </h4>
-                            <p className="text-sm text-gray-400 mt-1">
+                            <p className={`text-sm mt-1 ${isClean ? 'text-gray-500' : 'text-gray-400'}`}>
                               Funil: {campanha.funil_nome}
                             </p>
                           </div>
@@ -1702,7 +1652,7 @@ export default function PainelAdmin() {
                             <Badge variant={campanha.ativa ? 'default' : 'secondary'}>
                               {campanha.ativa ? 'Ativa' : 'Inativa'}
                             </Badge>
-                            <Button size="sm" variant="ghost" className="text-gray-400 hover:text-white">
+                            <Button size="sm" variant="ghost" className={isClean ? 'text-gray-400 hover:text-gray-700' : 'text-gray-400 hover:text-white'}>
                               <Edit className="h-4 w-4" />
                             </Button>
                             <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300">
@@ -1719,20 +1669,14 @@ export default function PainelAdmin() {
 
             {/* Tab: Configurações */}
             <TabsContent value="configuracoes" className="space-y-4">
-              <Card className="bg-gray-800/50 border-gray-700">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center gap-2">
-                    <Settings className="h-5 w-5" />
-                    Configurações do Sistema
-                  </CardTitle>
-                  <CardDescription className="text-gray-400">
-                    Configure parâmetros gerais do sistema
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-gray-400 text-sm">Em desenvolvimento...</p>
-                </CardContent>
-              </Card>
+              {/* Integração Meta Ads */}
+              <MetaIntegrationCard />
+
+              {/* Integração Typebot */}
+              <TypebotIntegrationCard />
+
+              {/* Integração Kommo CRM */}
+              <KommoIntegrationCard />
             </TabsContent>
           </Tabs>
         </div>
@@ -1741,44 +1685,44 @@ export default function PainelAdmin() {
       {/* Modal Criar Usuário */}
       {modalUsuarioAberto && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-white mb-4">Criar Novo Usuário</h3>
+          <div className={`rounded-lg p-6 max-w-md w-full ${isClean ? 'bg-white border border-gray-200 shadow-lg' : 'bg-gray-900 border border-gray-700'}`}>
+            <h3 className={`text-xl font-bold mb-4 ${isClean ? 'text-gray-900' : 'text-white'}`}>Criar Novo Usuário</h3>
             <div className="space-y-4">
               <div>
-                <Label className="text-gray-300">Nome Completo</Label>
+                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Nome Completo</Label>
                 <Input
                   value={novoUsuario.nome}
                   onChange={(e) => setNovoUsuario({ ...novoUsuario, nome: e.target.value })}
-                  className="bg-gray-800 border-gray-600 text-white"
+                  className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}
                   placeholder="Ex: João Silva"
                 />
               </div>
               <div>
-                <Label className="text-gray-300">Email</Label>
+                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Email</Label>
                 <Input
                   type="email"
                   value={novoUsuario.email}
                   onChange={(e) => setNovoUsuario({ ...novoUsuario, email: e.target.value })}
-                  className="bg-gray-800 border-gray-600 text-white"
+                  className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}
                   placeholder="joao@exemplo.com"
                 />
               </div>
               <div>
-                <Label className="text-gray-300">Senha</Label>
+                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Senha</Label>
                 <Input
                   type="password"
                   value={novoUsuario.senha}
                   onChange={(e) => setNovoUsuario({ ...novoUsuario, senha: e.target.value })}
-                  className="bg-gray-800 border-gray-600 text-white"
+                  className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}
                   placeholder="••••••••"
                 />
               </div>
               <div>
-                <Label className="text-gray-300">Função</Label>
+                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Função</Label>
                 <select
                   value={novoUsuario.role}
                   onChange={(e) => setNovoUsuario({ ...novoUsuario, role: e.target.value as UserRole })}
-                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded"
+                  className={`w-full px-3 py-2 rounded border ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}`}
                 >
                   <option value="admin">Administrador - Acesso Total</option>
                   <option value="trafego">Tráfego - Apenas Dashboard Tráfego</option>
@@ -1793,14 +1737,14 @@ export default function PainelAdmin() {
               <Button
                 onClick={() => setModalUsuarioAberto(false)}
                 variant="outline"
-                className="flex-1 border-gray-600"
+                className={`flex-1 ${isClean ? 'border-gray-200' : 'border-gray-600'}`}
               >
                 Cancelar
               </Button>
               <Button
                 onClick={handleCriarUsuario}
                 disabled={loading}
-                className="flex-1 bg-purple-600 hover:bg-purple-700"
+                className={`flex-1 ${isClean ? 'bg-amber-600 hover:bg-amber-700' : 'bg-purple-600 hover:bg-purple-700'}`}
               >
                 {loading ? 'Criando...' : 'Criar Usuário'}
               </Button>
@@ -1812,24 +1756,24 @@ export default function PainelAdmin() {
       {/* Modal Criar Funil */}
       {modalFunilAberto && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-white mb-4">Criar Novo Funil</h3>
+          <div className={`rounded-lg p-6 max-w-md w-full ${isClean ? 'bg-white border border-gray-200 shadow-lg' : 'bg-gray-900 border border-gray-700'}`}>
+            <h3 className={`text-xl font-bold mb-4 ${isClean ? 'text-gray-900' : 'text-white'}`}>Criar Novo Funil</h3>
             <div className="space-y-4">
               <div>
-                <Label className="text-gray-300">Nome do Funil</Label>
+                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Nome do Funil</Label>
                 <Input
                   value={novoFunil.nome}
                   onChange={(e) => setNovoFunil({ ...novoFunil, nome: e.target.value })}
-                  className="bg-gray-800 border-gray-600 text-white"
+                  className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}
                   placeholder="Ex: Funil de Vendas"
                 />
               </div>
               <div>
-                <Label className="text-gray-300">Descrição (opcional)</Label>
+                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Descrição (opcional)</Label>
                 <textarea
                   value={novoFunil.descricao}
                   onChange={(e) => setNovoFunil({ ...novoFunil, descricao: e.target.value })}
-                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded h-24"
+                  className={`w-full px-3 py-2 rounded h-24 border ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}`}
                   placeholder="Descreva o objetivo deste funil..."
                 />
               </div>
@@ -1838,14 +1782,14 @@ export default function PainelAdmin() {
               <Button
                 onClick={() => setModalFunilAberto(false)}
                 variant="outline"
-                className="flex-1 border-gray-600"
+                className={`flex-1 ${isClean ? 'border-gray-200' : 'border-gray-600'}`}
               >
                 Cancelar
               </Button>
               <Button
                 onClick={handleCriarFunil}
                 disabled={loading}
-                className="flex-1 bg-cyan-600 hover:bg-cyan-700"
+                className={`flex-1 ${isClean ? 'bg-amber-600 hover:bg-amber-700' : 'bg-cyan-600 hover:bg-cyan-700'}`}
               >
                 {loading ? 'Criando...' : 'Criar Funil'}
               </Button>
@@ -1857,24 +1801,24 @@ export default function PainelAdmin() {
       {/* Modal Criar Campanha */}
       {modalCampanhaAberto && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-white mb-4">Criar Nova Campanha</h3>
+          <div className={`rounded-lg p-6 max-w-md w-full ${isClean ? 'bg-white border border-gray-200 shadow-lg' : 'bg-gray-900 border border-gray-700'}`}>
+            <h3 className={`text-xl font-bold mb-4 ${isClean ? 'text-gray-900' : 'text-white'}`}>Criar Nova Campanha</h3>
             <div className="space-y-4">
               <div>
-                <Label className="text-gray-300">Nome da Campanha</Label>
+                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Nome da Campanha</Label>
                 <Input
                   value={novaCampanha.nome}
                   onChange={(e) => setNovaCampanha({ ...novaCampanha, nome: e.target.value })}
-                  className="bg-gray-800 border-gray-600 text-white"
+                  className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}
                   placeholder="Ex: Black Friday 2024"
                 />
               </div>
               <div>
-                <Label className="text-gray-300">Funil</Label>
+                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Funil</Label>
                 <select
                   value={novaCampanha.funil_id}
                   onChange={(e) => setNovaCampanha({ ...novaCampanha, funil_id: e.target.value })}
-                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded"
+                  className={`w-full px-3 py-2 rounded border ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}`}
                 >
                   <option value="">Selecione um funil</option>
                   {funis.map(funil => (
@@ -1887,14 +1831,14 @@ export default function PainelAdmin() {
               <Button
                 onClick={() => setModalCampanhaAberto(false)}
                 variant="outline"
-                className="flex-1 border-gray-600"
+                className={`flex-1 ${isClean ? 'border-gray-200' : 'border-gray-600'}`}
               >
                 Cancelar
               </Button>
               <Button
                 onClick={handleCriarCampanha}
                 disabled={loading}
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                className={`flex-1 ${isClean ? 'bg-blue-500 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-700'}`}
               >
                 {loading ? 'Criando...' : 'Criar Campanha'}
               </Button>
@@ -1906,15 +1850,15 @@ export default function PainelAdmin() {
       {/* Modal Criar Conjunto de Anúncio */}
       {modalConjuntoAberto && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-white mb-4">Criar Novo Conjunto de Anúncio</h3>
+          <div className={`rounded-lg p-6 max-w-md w-full ${isClean ? 'bg-white border border-gray-200 shadow-lg' : 'bg-gray-900 border border-gray-700'}`}>
+            <h3 className={`text-xl font-bold mb-4 ${isClean ? 'text-gray-900' : 'text-white'}`}>Criar Novo Conjunto de Anúncio</h3>
             <div className="space-y-4">
               <div>
-                <Label className="text-gray-300">Campanha</Label>
+                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Campanha</Label>
                 <select
                   value={campanhaSelecionadaParaConjunto}
                   onChange={(e) => setCampanhaSelecionadaParaConjunto(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded"
+                  className={`w-full px-3 py-2 rounded border ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}`}
                 >
                   <option value="">Selecione uma campanha</option>
                   {campanhas.map(campanha => (
@@ -1923,11 +1867,11 @@ export default function PainelAdmin() {
                 </select>
               </div>
               <div>
-                <Label className="text-gray-300">Nome do Conjunto</Label>
+                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Nome do Conjunto</Label>
                 <Input
                   value={novoConjunto.nome}
                   onChange={(e) => setNovoConjunto({ ...novoConjunto, nome: e.target.value })}
-                  className="bg-gray-800 border-gray-600 text-white"
+                  className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}
                   placeholder="Ex: Conjunto Black Friday"
                 />
               </div>
@@ -1936,14 +1880,14 @@ export default function PainelAdmin() {
               <Button
                 onClick={() => setModalConjuntoAberto(false)}
                 variant="outline"
-                className="flex-1 border-gray-600"
+                className={`flex-1 ${isClean ? 'border-gray-200' : 'border-gray-600'}`}
               >
                 Cancelar
               </Button>
               <Button
                 onClick={handleCriarConjunto}
                 disabled={loading}
-                className="flex-1 bg-green-600 hover:bg-green-700"
+                className={`flex-1 ${isClean ? 'bg-green-500 hover:bg-green-600' : 'bg-green-600 hover:bg-green-700'}`}
               >
                 {loading ? 'Criando...' : 'Criar Conjunto'}
               </Button>
@@ -1955,18 +1899,18 @@ export default function PainelAdmin() {
       {/* Modal Criar Anúncio */}
       {modalAnuncioAberto && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-white mb-4">Criar Novo Anúncio</h3>
+          <div className={`rounded-lg p-6 max-w-md w-full ${isClean ? 'bg-white border border-gray-200 shadow-lg' : 'bg-gray-900 border border-gray-700'}`}>
+            <h3 className={`text-xl font-bold mb-4 ${isClean ? 'text-gray-900' : 'text-white'}`}>Criar Novo Anúncio</h3>
             <div className="space-y-4">
               <div>
-                <Label className="text-gray-300">Campanha</Label>
+                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Campanha</Label>
                 <select
                   value={campanhaSelecionadaParaAnuncio}
                   onChange={(e) => {
                     setCampanhaSelecionadaParaAnuncio(e.target.value);
                     setConjuntoSelecionadoParaAnuncio(''); // Limpar conjunto ao mudar campanha
                   }}
-                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded"
+                  className={`w-full px-3 py-2 rounded border ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}`}
                 >
                   <option value="">Selecione uma campanha</option>
                   {campanhas.map(campanha => (
@@ -1975,11 +1919,11 @@ export default function PainelAdmin() {
                 </select>
               </div>
               <div>
-                <Label className="text-gray-300">Conjunto de Anúncio</Label>
+                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Conjunto de Anúncio</Label>
                 <select
                   value={conjuntoSelecionadoParaAnuncio}
                   onChange={(e) => setConjuntoSelecionadoParaAnuncio(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded"
+                  className={`w-full px-3 py-2 rounded border ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}`}
                   disabled={!campanhaSelecionadaParaAnuncio}
                 >
                   <option value="">Selecione um conjunto</option>
@@ -1992,20 +1936,20 @@ export default function PainelAdmin() {
                 </select>
               </div>
               <div>
-                <Label className="text-gray-300">Nome do Anúncio</Label>
+                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Nome do Anúncio</Label>
                 <Input
                   value={novoAnuncio.nome}
                   onChange={(e) => setNovoAnuncio({ ...novoAnuncio, nome: e.target.value })}
-                  className="bg-gray-800 border-gray-600 text-white"
+                  className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}
                   placeholder="Ex: Banner Black Friday"
                 />
               </div>
               <div>
-                <Label className="text-gray-300">Tipo (opcional)</Label>
+                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Tipo (opcional)</Label>
                 <select
                   value={novoAnuncio.tipo}
                   onChange={(e) => setNovoAnuncio({ ...novoAnuncio, tipo: e.target.value })}
-                  className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded"
+                  className={`w-full px-3 py-2 rounded border ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}`}
                 >
                   <option value="image">Imagem</option>
                   <option value="video">Vídeo</option>
@@ -2013,9 +1957,9 @@ export default function PainelAdmin() {
                 </select>
               </div>
               <div>
-                <Label className="text-gray-300">Criativo (Imagem/Vídeo)</Label>
+                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Criativo (Imagem/Vídeo)</Label>
                 <div 
-                  className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center hover:border-gray-500 transition-colors"
+                  className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${isClean ? 'border-gray-300 hover:border-gray-400' : 'border-gray-600 hover:border-gray-500'}`}
                   onPaste={(e) => {
                     const items = e.clipboardData.items;
                     for (let i = 0; i < items.length; i++) {
@@ -2090,14 +2034,14 @@ export default function PainelAdmin() {
               <Button
                 onClick={() => setModalAnuncioAberto(false)}
                 variant="outline"
-                className="flex-1 border-gray-600"
+                className={`flex-1 ${isClean ? 'border-gray-200' : 'border-gray-600'}`}
               >
                 Cancelar
               </Button>
               <Button
                 onClick={handleCriarAnuncio}
                 disabled={loading}
-                className="flex-1 bg-purple-600 hover:bg-purple-700"
+                className={`flex-1 ${isClean ? 'bg-purple-500 hover:bg-purple-600' : 'bg-purple-600 hover:bg-purple-700'}`}
               >
                 {loading ? 'Criando...' : 'Criar Anúncio'}
               </Button>
@@ -2108,13 +2052,13 @@ export default function PainelAdmin() {
 
       {/* Modal: Criar Usuário */}
       <Dialog open={modalUsuarioAberto} onOpenChange={setModalUsuarioAberto}>
-        <DialogContent className="bg-gray-800 border-gray-700 text-white max-w-md">
+        <DialogContent className={`max-w-md ${isClean ? 'bg-white border-gray-200 text-gray-900' : 'bg-gray-800 border-gray-700 text-white'}`}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-purple-400" />
+              <Users className={isClean ? 'h-5 w-5 text-amber-600' : 'h-5 w-5 text-purple-400'} />
               Criar Novo Usuário
             </DialogTitle>
-            <DialogDescription className="text-gray-400">
+            <DialogDescription className={isClean ? 'text-gray-500' : 'text-gray-400'}>
               Preencha os dados do novo usuário do sistema
             </DialogDescription>
           </DialogHeader>
@@ -2127,7 +2071,7 @@ export default function PainelAdmin() {
                 placeholder="Igor Macedo"
                 value={novoUsuario.nome}
                 onChange={(e) => setNovoUsuario({ ...novoUsuario, nome: e.target.value })}
-                className="bg-gray-900 border-gray-600 text-white"
+                className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-900 border-gray-600 text-white'}
               />
             </div>
 
@@ -2139,7 +2083,7 @@ export default function PainelAdmin() {
                 placeholder="igorwillian.macedo@gmail.com"
                 value={novoUsuario.email}
                 onChange={(e) => setNovoUsuario({ ...novoUsuario, email: e.target.value })}
-                className="bg-gray-900 border-gray-600 text-white"
+                className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-900 border-gray-600 text-white'}
               />
             </div>
 
@@ -2151,7 +2095,7 @@ export default function PainelAdmin() {
                 placeholder="Mínimo 6 caracteres"
                 value={novoUsuario.senha}
                 onChange={(e) => setNovoUsuario({ ...novoUsuario, senha: e.target.value })}
-                className="bg-gray-900 border-gray-600 text-white"
+                className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-900 border-gray-600 text-white'}
               />
             </div>
 
@@ -2161,29 +2105,29 @@ export default function PainelAdmin() {
                 value={novoUsuario.role}
                 onValueChange={(value) => setNovoUsuario({ ...novoUsuario, role: value as UserRole })}
               >
-                <SelectTrigger className="bg-gray-900 border-gray-600 text-white">
+                <SelectTrigger className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-900 border-gray-600 text-white'}>
                   <SelectValue placeholder="Selecione a função" />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-800 border-gray-700">
-                  <SelectItem value="admin" className="text-white hover:bg-gray-700">
+                <SelectContent className={isClean ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'}>
+                  <SelectItem value="admin" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
                     Administrador - Acesso Total
                   </SelectItem>
-                  <SelectItem value="gestor" className="text-white hover:bg-gray-700">
+                  <SelectItem value="gestor" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
                     Gestor de Marketing
                   </SelectItem>
-                  <SelectItem value="sdr" className="text-white hover:bg-gray-700">
+                  <SelectItem value="sdr" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
                     SDR
                   </SelectItem>
-                  <SelectItem value="closer" className="text-white hover:bg-gray-700">
+                  <SelectItem value="closer" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
                     Closer
                   </SelectItem>
-                  <SelectItem value="social-seller" className="text-white hover:bg-gray-700">
+                  <SelectItem value="social-seller" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
                     Social Seller
                   </SelectItem>
-                  <SelectItem value="cs" className="text-white hover:bg-gray-700">
+                  <SelectItem value="cs" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
                     Customer Success
                   </SelectItem>
-                  <SelectItem value="trafego" className="text-white hover:bg-gray-700">
+                  <SelectItem value="trafego" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
                     Tráfego Pago
                   </SelectItem>
                 </SelectContent>
@@ -2194,7 +2138,7 @@ export default function PainelAdmin() {
               <Button
                 onClick={() => setModalUsuarioAberto(false)}
                 variant="outline"
-                className="flex-1 border-gray-600"
+                className={`flex-1 ${isClean ? 'border-gray-200' : 'border-gray-600'}`}
                 disabled={loading}
               >
                 Cancelar
@@ -2202,7 +2146,7 @@ export default function PainelAdmin() {
               <Button
                 onClick={handleCriarUsuario}
                 disabled={loading}
-                className="flex-1 bg-purple-600 hover:bg-purple-700"
+                className={`flex-1 ${isClean ? 'bg-amber-600 hover:bg-amber-700' : 'bg-purple-600 hover:bg-purple-700'}`}
               >
                 {loading ? 'Criando...' : 'Criar Usuário'}
               </Button>
@@ -2213,9 +2157,9 @@ export default function PainelAdmin() {
 
       {/* Modal de Edição de Usuário */}
       <Dialog open={modalEditarUsuarioAberto} onOpenChange={setModalEditarUsuarioAberto}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white">
+        <DialogContent className={isClean ? 'bg-white border-gray-200 text-gray-900' : 'bg-gray-900 border-gray-700 text-white'}>
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold text-purple-400">
+            <DialogTitle className={`text-2xl font-bold ${isClean ? 'text-amber-600' : 'text-purple-400'}`}>
               Editar Usuário
             </DialogTitle>
           </DialogHeader>
@@ -2229,7 +2173,7 @@ export default function PainelAdmin() {
                 onChange={(e) => setUsuarioEditando(prev => 
                   prev ? { ...prev, nome: e.target.value } : null
                 )}
-                className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white"
+                className={`w-full p-3 rounded-lg border ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}`}
                 placeholder="Digite o nome completo"
               />
             </div>
@@ -2241,7 +2185,7 @@ export default function PainelAdmin() {
                 type="email"
                 value={usuarioEditando?.email || ''}
                 disabled
-                className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-400 cursor-not-allowed"
+                className={`w-full p-3 rounded-lg border cursor-not-allowed ${isClean ? 'bg-gray-100 border-gray-200 text-gray-400' : 'bg-gray-700 border-gray-600 text-gray-400'}`}
               />
               <p className="text-xs text-gray-400 mt-1">O e-mail não pode ser alterado</p>
             </div>
@@ -2255,26 +2199,26 @@ export default function PainelAdmin() {
                   prev ? { ...prev, role: value as Usuario['role'] } : null
                 )}
               >
-                <SelectTrigger className="bg-gray-900 border-gray-600 text-white">
+                <SelectTrigger className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-900 border-gray-600 text-white'}>
                   <SelectValue placeholder="Selecione a função" />
                 </SelectTrigger>
-                <SelectContent className="bg-gray-800 border-gray-700">
-                  <SelectItem value="admin" className="text-white hover:bg-gray-700">
+                <SelectContent className={isClean ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'}>
+                  <SelectItem value="admin" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
                     Administrador - Acesso Total
                   </SelectItem>
-                  <SelectItem value="gestor" className="text-white hover:bg-gray-700">
+                  <SelectItem value="gestor" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
                     Gestor de Marketing
                   </SelectItem>
-                  <SelectItem value="sdr" className="text-white hover:bg-gray-700">
+                  <SelectItem value="sdr" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
                     SDR
                   </SelectItem>
-                  <SelectItem value="closer" className="text-white hover:bg-gray-700">
+                  <SelectItem value="closer" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
                     Closer
                   </SelectItem>
-                  <SelectItem value="social-seller" className="text-white hover:bg-gray-700">
+                  <SelectItem value="social-seller" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
                     Social Seller
                   </SelectItem>
-                  <SelectItem value="cs" className="text-white hover:bg-gray-700">
+                  <SelectItem value="cs" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
                     CS - Customer Success
                   </SelectItem>
                 </SelectContent>
@@ -2282,7 +2226,7 @@ export default function PainelAdmin() {
             </div>
 
             {/* Status Ativo */}
-            <div className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg">
+            <div className={`flex items-center gap-3 p-3 rounded-lg ${isClean ? 'bg-gray-50' : 'bg-gray-800'}`}>
               <input
                 type="checkbox"
                 id="ativo-edit"
@@ -2290,7 +2234,7 @@ export default function PainelAdmin() {
                 onChange={(e) => setUsuarioEditando(prev => 
                   prev ? { ...prev, ativo: e.target.checked } : null
                 )}
-                className="w-4 h-4 text-purple-600 bg-gray-700 border-gray-600 rounded focus:ring-purple-500"
+                className={`w-4 h-4 rounded ${isClean ? 'text-amber-600 bg-white border-gray-300 focus:ring-amber-600' : 'text-purple-600 bg-gray-700 border-gray-600 focus:ring-purple-500'}`}
               />
               <label htmlFor="ativo-edit" className="text-sm font-medium cursor-pointer">
                 Usuário Ativo
@@ -2312,7 +2256,7 @@ export default function PainelAdmin() {
                   setUsuarioEditando(null);
                 }}
                 variant="outline"
-                className="flex-1 border-gray-600"
+                className={`flex-1 ${isClean ? 'border-gray-200' : 'border-gray-600'}`}
                 disabled={loading}
               >
                 Cancelar
@@ -2320,7 +2264,7 @@ export default function PainelAdmin() {
               <Button
                 onClick={() => handleSalvarEdicao()}
                 disabled={loading}
-                className="flex-1 bg-purple-600 hover:bg-purple-700"
+                className={`flex-1 ${isClean ? 'bg-amber-600 hover:bg-amber-700' : 'bg-purple-600 hover:bg-purple-700'}`}
               >
                 {loading ? 'Salvando...' : 'Salvar Alterações'}
               </Button>
@@ -2331,31 +2275,31 @@ export default function PainelAdmin() {
 
       {/* Modal de Edição de Funil */}
       <Dialog open={modalEditarFunilAberto} onOpenChange={setModalEditarFunilAberto}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white">
+        <DialogContent className={isClean ? 'bg-white border-gray-200 text-gray-900' : 'bg-gray-900 border-gray-700 text-white'}>
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold text-cyan-400">
+            <DialogTitle className={`text-2xl font-bold ${isClean ? 'text-amber-600' : 'text-cyan-400'}`}>
               Editar Funil
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="edit-nome-funil" className="text-gray-300">Nome do Funil</Label>
+              <Label htmlFor="edit-nome-funil" className={isClean ? 'text-gray-700' : 'text-gray-300'}>Nome do Funil</Label>
               <Input
                 id="edit-nome-funil"
                 value={funilEditando?.nome || ''}
                 onChange={(e) => setFunilEditando(prev => prev ? {...prev, nome: e.target.value} : null)}
                 placeholder="Ex: Funil de Vendas"
-                className="bg-gray-800 border-gray-600 text-white mt-2"
+                className={`mt-2 ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}`}
               />
             </div>
             <div>
-              <Label htmlFor="edit-descricao-funil" className="text-gray-300">Descrição (opcional)</Label>
+              <Label htmlFor="edit-descricao-funil" className={isClean ? 'text-gray-700' : 'text-gray-300'}>Descrição (opcional)</Label>
               <Input
                 id="edit-descricao-funil"
                 value={funilEditando?.descricao || ''}
                 onChange={(e) => setFunilEditando(prev => prev ? {...prev, descricao: e.target.value} : null)}
                 placeholder="Breve descrição do funil"
-                className="bg-gray-800 border-gray-600 text-white mt-2"
+                className={`mt-2 ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}`}
               />
             </div>
             <div className="flex gap-3 pt-4">
@@ -2365,7 +2309,7 @@ export default function PainelAdmin() {
                   setFunilEditando(null);
                 }}
                 variant="outline"
-                className="flex-1 border-gray-600"
+                className={`flex-1 ${isClean ? 'border-gray-200' : 'border-gray-600'}`}
                 disabled={loading}
               >
                 Cancelar
@@ -2373,7 +2317,7 @@ export default function PainelAdmin() {
               <Button
                 onClick={handleSalvarEdicaoFunil}
                 disabled={loading}
-                className="flex-1 bg-cyan-600 hover:bg-cyan-700"
+                className={`flex-1 ${isClean ? 'bg-amber-600 hover:bg-amber-700' : 'bg-cyan-600 hover:bg-cyan-700'}`}
               >
                 {loading ? 'Salvando...' : 'Salvar Alterações'}
               </Button>
@@ -2384,50 +2328,50 @@ export default function PainelAdmin() {
 
       {/* Modal de Edição de Campanha */}
       <Dialog open={modalEditarCampanhaAberto} onOpenChange={setModalEditarCampanhaAberto}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white">
+        <DialogContent className={isClean ? 'bg-white border-gray-200 text-gray-900' : 'bg-gray-900 border-gray-700 text-white'}>
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold text-blue-400">
+            <DialogTitle className={`text-2xl font-bold ${isClean ? 'text-blue-500' : 'text-blue-400'}`}>
               Editar Campanha
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="edit-nome-campanha" className="text-gray-300">Nome da Campanha</Label>
+              <Label htmlFor="edit-nome-campanha" className={isClean ? 'text-gray-700' : 'text-gray-300'}>Nome da Campanha</Label>
               <Input
                 id="edit-nome-campanha"
                 value={campanhaEditando?.nome || ''}
                 onChange={(e) => setCampanhaEditando(prev => prev ? {...prev, nome: e.target.value} : null)}
                 placeholder="Ex: Campanha Black Friday"
-                className="bg-gray-800 border-gray-600 text-white mt-2"
+                className={`mt-2 ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}`}
               />
             </div>
             <div>
-              <Label htmlFor="edit-tipo-campanha" className="text-gray-300">Tipo (opcional)</Label>
+              <Label htmlFor="edit-tipo-campanha" className={isClean ? 'text-gray-700' : 'text-gray-300'}>Tipo (opcional)</Label>
               <Input
                 id="edit-tipo-campanha"
                 value={campanhaEditando?.tipo || ''}
                 onChange={(e) => setCampanhaEditando(prev => prev ? {...prev, tipo: e.target.value} : null)}
                 placeholder="Ex: Conversão, Tráfego"
-                className="bg-gray-800 border-gray-600 text-white mt-2"
+                className={`mt-2 ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}`}
               />
             </div>
             <div>
-              <Label htmlFor="edit-plataforma-campanha" className="text-gray-300">Plataforma (opcional)</Label>
+              <Label htmlFor="edit-plataforma-campanha" className={isClean ? 'text-gray-700' : 'text-gray-300'}>Plataforma (opcional)</Label>
               <Input
                 id="edit-plataforma-campanha"
                 value={campanhaEditando?.plataforma || ''}
                 onChange={(e) => setCampanhaEditando(prev => prev ? {...prev, plataforma: e.target.value} : null)}
                 placeholder="Ex: Facebook, Google"
-                className="bg-gray-800 border-gray-600 text-white mt-2"
+                className={`mt-2 ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}`}
               />
             </div>
-            <div className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg">
+            <div className={`flex items-center gap-3 p-3 rounded-lg ${isClean ? 'bg-gray-50' : 'bg-gray-800'}`}>
               <input
                 type="checkbox"
                 id="ativo-campanha-edit"
                 checked={campanhaEditando?.ativo || false}
                 onChange={(e) => setCampanhaEditando(prev => prev ? {...prev, ativo: e.target.checked} : null)}
-                className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                className={`w-4 h-4 rounded ${isClean ? 'text-blue-500 bg-white border-gray-300 focus:ring-blue-500' : 'text-blue-600 bg-gray-700 border-gray-600 focus:ring-blue-500'}`}
               />
               <label htmlFor="ativo-campanha-edit" className="text-sm font-medium cursor-pointer">
                 Campanha Ativa
@@ -2440,7 +2384,7 @@ export default function PainelAdmin() {
                   setCampanhaEditando(null);
                 }}
                 variant="outline"
-                className="flex-1 border-gray-600"
+                className={`flex-1 ${isClean ? 'border-gray-200' : 'border-gray-600'}`}
                 disabled={loading}
               >
                 Cancelar
@@ -2448,7 +2392,7 @@ export default function PainelAdmin() {
               <Button
                 onClick={handleSalvarEdicaoCampanha}
                 disabled={loading}
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                className={`flex-1 ${isClean ? 'bg-blue-500 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-700'}`}
               >
                 {loading ? 'Salvando...' : 'Salvar Alterações'}
               </Button>
@@ -2459,30 +2403,30 @@ export default function PainelAdmin() {
 
       {/* Modal de Edição de Conjunto */}
       <Dialog open={modalEditarConjuntoAberto} onOpenChange={setModalEditarConjuntoAberto}>
-        <DialogContent className="bg-gray-900 border-gray-700 text-white">
+        <DialogContent className={isClean ? 'bg-white border-gray-200 text-gray-900' : 'bg-gray-900 border-gray-700 text-white'}>
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold text-green-400">
+            <DialogTitle className={`text-2xl font-bold ${isClean ? 'text-green-500' : 'text-green-400'}`}>
               Editar Conjunto de Anúncio
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="edit-nome-conjunto" className="text-gray-300">Nome do Conjunto</Label>
+              <Label htmlFor="edit-nome-conjunto" className={isClean ? 'text-gray-700' : 'text-gray-300'}>Nome do Conjunto</Label>
               <Input
                 id="edit-nome-conjunto"
                 value={conjuntoEditando?.nome || ''}
                 onChange={(e) => setConjuntoEditando(prev => prev ? {...prev, nome: e.target.value} : null)}
                 placeholder="Ex: Público Quente"
-                className="bg-gray-800 border-gray-600 text-white mt-2"
+                className={`mt-2 ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}`}
               />
             </div>
-            <div className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg">
+            <div className={`flex items-center gap-3 p-3 rounded-lg ${isClean ? 'bg-gray-50' : 'bg-gray-800'}`}>
               <input
                 type="checkbox"
                 id="ativo-conjunto-edit"
                 checked={conjuntoEditando?.ativo || false}
                 onChange={(e) => setConjuntoEditando(prev => prev ? {...prev, ativo: e.target.checked} : null)}
-                className="w-4 h-4 text-green-600 bg-gray-700 border-gray-600 rounded focus:ring-green-500"
+                className={`w-4 h-4 rounded ${isClean ? 'text-green-500 bg-white border-gray-300 focus:ring-green-500' : 'text-green-600 bg-gray-700 border-gray-600 focus:ring-green-500'}`}
               />
               <label htmlFor="ativo-conjunto-edit" className="text-sm font-medium cursor-pointer">
                 Conjunto Ativo
@@ -2495,7 +2439,7 @@ export default function PainelAdmin() {
                   setConjuntoEditando(null);
                 }}
                 variant="outline"
-                className="flex-1 border-gray-600"
+                className={`flex-1 ${isClean ? 'border-gray-200' : 'border-gray-600'}`}
                 disabled={loading}
               >
                 Cancelar
@@ -2503,7 +2447,7 @@ export default function PainelAdmin() {
               <Button
                 onClick={handleSalvarEdicaoConjunto}
                 disabled={loading}
-                className="flex-1 bg-green-600 hover:bg-green-700"
+                className={`flex-1 ${isClean ? 'bg-green-500 hover:bg-green-600' : 'bg-green-600 hover:bg-green-700'}`}
               >
                 {loading ? 'Salvando...' : 'Salvar Alterações'}
               </Button>

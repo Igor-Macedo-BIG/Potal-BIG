@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/lib/supabase';
 import { useCampanhaContext } from '@/contexts/CampanhaContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import ModalCriarFunil from '@/components/modals/ModalCriarFunil';
 import ModalCriarCampanha from '@/components/modals/ModalCriarCampanha';
 import ModalCriacaoAninhada from '@/components/modals/ModalCriacaoAninhada';
@@ -29,7 +30,8 @@ import {
   Handshake,
   HeadphonesIcon,
   Share2,
-  Shield
+  Shield,
+  Camera
 } from 'lucide-react';
 import type { Funil, Campanha } from '@/types/hierarchical';
 
@@ -45,23 +47,48 @@ const navigationBase = [
 
 interface SidebarProps {
   empresaNome?: string;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
-export function SidebarComFunis({ empresaNome }: SidebarProps) {
+export function SidebarComFunis({ empresaNome, isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { selecionarCampanha, campanhaAtiva } = useCampanhaContext();
+  const { isClean } = useTheme();
   const [funis, setFunis] = useState<Funil[]>([]);
   const [campanhasPorFunil, setCampanhasPorFunil] = useState<Record<string, Campanha[]>>({});
   const [funisExpandidos, setFunisExpandidos] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [modalCriacaoAberto, setModalCriacaoAberto] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     carregarFunis();
     carregarUserRole();
+    // Carregar foto de perfil do localStorage
+    const savedPhoto = localStorage.getItem('profile-photo');
+    if (savedPhoto) setProfilePhoto(savedPhoto);
   }, []);
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Imagem muito grande. Máximo 2MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      setProfilePhoto(dataUrl);
+      localStorage.setItem('profile-photo', dataUrl);
+      toast.success('Foto atualizada!');
+    };
+    reader.readAsDataURL(file);
+  };
 
   const carregarUserRole = async () => {
     try {
@@ -86,59 +113,22 @@ export function SidebarComFunis({ empresaNome }: SidebarProps) {
   const carregarFunis = async () => {
     setLoading(true);
     try {
-      // Carregar funis diretamente do Supabase
-      const { data: funis, error: errorFunis } = await supabase
-        .from('funis')
-        .select('*')
-        .eq('empresa_id', '550e8400-e29b-41d4-a716-446655440000')
-        .order('created_at', { ascending: false });
-
-      if (errorFunis) {
-        console.error('❌ Erro ao carregar funis:', {
-          error: errorFunis,
-          message: errorFunis?.message,
-          details: errorFunis?.details,
-          hint: errorFunis?.hint,
-          code: errorFunis?.code
-        });
-        toast.error(`Erro ao carregar funis: ${errorFunis?.message || 'Erro desconhecido'}`);
-        return;
+      // Carregar funis via API route (não direto do Supabase)
+      const response = await fetch('/api/funis');
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao carregar funis');
       }
 
-      console.log('✅ Funis carregados:', funis?.length || 0);
+      const data = await response.json();
+      console.log('✅ Funis carregados:', data.funis?.length || 0);
 
-      // Carregar campanhas dos funis
-      const { data: campanhas, error: errorCampanhas } = await supabase
-        .from('campanhas')
-        .select('*')
-        .in('funil_id', funis?.map(f => f.id) || [])
-        .order('created_at', { ascending: false });
-
-      if (errorCampanhas) {
-        console.error('❌ Erro ao carregar campanhas:', {
-          error: errorCampanhas,
-          message: errorCampanhas?.message,
-          details: errorCampanhas?.details,
-          hint: errorCampanhas?.hint,
-          code: errorCampanhas?.code
-        });
-      } else {
-        console.log('✅ Campanhas carregadas:', campanhas?.length || 0);
-      }
-
-      // Agrupar campanhas por funil
-      const campanhasPorFunil: Record<string, Campanha[]> = {};
-      campanhas?.forEach(campanha => {
-        if (!campanhasPorFunil[campanha.funil_id]) {
-          campanhasPorFunil[campanha.funil_id] = [];
-        }
-        campanhasPorFunil[campanha.funil_id].push(campanha);
-      });
-
-      setFunis(funis || []);
-      setCampanhasPorFunil(campanhasPorFunil);
+      setFunis(data.funis || []);
+      setCampanhasPorFunil(data.campanhasPorFunil || {});
     } catch (error) {
-      console.error('Erro ao carregar funis:', error);
+      console.error('❌ Erro ao carregar funis:', error);
+      toast.error(error instanceof Error ? error.message : 'Erro ao carregar funis');
     } finally {
       setLoading(false);
     }
@@ -249,20 +239,66 @@ export function SidebarComFunis({ empresaNome }: SidebarProps) {
   };
 
   return (
-    <div className="flex h-full w-64 flex-col bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 border-r border-slate-700/50 backdrop-blur-xl">
+    <div className={cn(
+      "sidebar-wrapper flex h-full w-64 flex-col border-r backdrop-blur-xl",
+      isClean
+        ? 'bg-white border-gray-200'
+        : 'bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 border-slate-700/50',
+      isOpen && "sidebar-open"
+    )}>
       {/* Logo e nome da empresa */}
-      <div className="relative flex h-16 items-center justify-center border-b border-slate-700/50 px-4 bg-gradient-to-r from-cyan-500/10 to-purple-500/10">
-        <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 to-purple-500/5 blur-xl" />
+      <div className={cn(
+        "sidebar-logo-area relative flex h-16 items-center justify-center border-b px-4",
+        isClean
+          ? 'border-gray-100 bg-amber-50/40'
+          : 'border-slate-700/50 bg-gradient-to-r from-cyan-500/10 to-purple-500/10'
+      )}>
+        {!isClean && <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/5 to-purple-500/5 blur-xl" />}
         <div className="relative flex items-center space-x-3">
-          <div className="p-2 bg-gradient-to-r from-cyan-500 to-purple-500 rounded-xl">
-            <BarChart3 className="h-6 w-6 text-white" />
+          <div
+            className={cn(
+              "relative w-10 h-10 rounded-xl overflow-hidden cursor-pointer group flex-shrink-0",
+              isClean
+                ? 'bg-gradient-to-r from-amber-500 to-amber-600'
+                : 'bg-gradient-to-r from-cyan-500 to-purple-500'
+            )}
+            onClick={() => fileInputRef.current?.click()}
+            title="Clique para alterar foto de perfil"
+          >
+            {profilePhoto ? (
+              <img src={profilePhoto} alt="Foto de perfil" className="w-full h-full object-cover" />
+            ) : (
+              <div className="flex items-center justify-center w-full h-full">
+                <BarChart3 className="h-5 w-5 text-white" />
+              </div>
+            )}
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <Camera className="h-4 w-4 text-white" />
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoUpload}
+            />
           </div>
           <div className="text-left">
-            <p className="text-sm font-bold text-white bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
-              Neural Traffic
+            <p className={cn(
+              "text-sm font-bold",
+              isClean
+                ? 'text-gray-900'
+                : 'text-white bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent'
+            )}>
+              Portal Empresarial
             </p>
             {empresaNome && (
-              <Badge className="text-xs bg-gradient-to-r from-slate-700 to-slate-600 text-cyan-300 border-slate-600">
+              <Badge className={cn(
+                "text-xs",
+                isClean
+                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                  : 'bg-gradient-to-r from-slate-700 to-slate-600 text-cyan-300 border-slate-600'
+              )}>
                 {empresaNome}
               </Badge>
             )}
@@ -278,36 +314,53 @@ export function SidebarComFunis({ empresaNome }: SidebarProps) {
           .map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
-          const isAdminRoute = item.roles.includes('admin') && item.roles.length <= 2; // Admin ou Gestor apenas
+          const isAdminRoute = item.roles.includes('admin') && item.roles.length <= 2;
 
           return (
             <Link key={item.name} href={item.href}>
               <Button
                 variant="ghost"
                 className={cn(
-                  'w-full justify-start text-left group relative overflow-hidden transition-all duration-300',
-                  isActive
-                    ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-white border border-cyan-500/30 shadow-lg shadow-cyan-500/20'
-                    : 'text-slate-300 hover:bg-gradient-to-r hover:from-slate-800/50 hover:to-slate-700/50 hover:text-white border border-transparent hover:border-slate-600/30',
-                  isAdminRoute && 'bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-purple-500/20'
+                  'sidebar-nav-item w-full justify-start text-left group relative overflow-hidden transition-all duration-300',
+                  isClean
+                    ? cn(
+                        isActive
+                          ? 'active bg-amber-50 text-amber-800 border border-amber-200 shadow-sm'
+                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 border border-transparent hover:border-gray-200/60',
+                        isAdminRoute && !isActive && 'bg-amber-50/50 border-amber-100'
+                      )
+                    : cn(
+                        isActive
+                          ? 'active bg-gradient-to-r from-cyan-500/20 to-purple-500/20 text-white border border-cyan-500/30 shadow-lg shadow-cyan-500/20'
+                          : 'text-slate-300 hover:bg-gradient-to-r hover:from-slate-800/50 hover:to-slate-700/50 hover:text-white border border-transparent hover:border-slate-600/30',
+                        isAdminRoute && 'bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-purple-500/20'
+                      )
                 )}
                 onClick={() => {
                   if (item.name === 'Dashboard') {
                     selecionarCampanha(null);
                     toast.success('Dashboard resetado para visão geral');
                   }
+                  if (onClose) onClose();
                 }}
               >
-                {isActive && (
+                {isActive && !isClean && (
                   <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 to-purple-500/10 blur-sm" />
                 )}
                 <Icon className={cn(
-                  "mr-3 h-4 w-4 relative z-10 transition-all duration-300",
-                  isActive ? "text-cyan-400" : isAdminRoute ? "text-purple-400" : "group-hover:text-purple-400"
+                  "nav-icon mr-3 h-4 w-4 relative z-10 transition-all duration-300",
+                  isClean
+                    ? (isActive ? "text-amber-600" : isAdminRoute ? "text-amber-500" : "text-gray-400 group-hover:text-gray-600")
+                    : (isActive ? "text-cyan-400" : isAdminRoute ? "text-purple-400" : "group-hover:text-purple-400")
                 )} />
                 <span className="relative z-10 font-medium">{item.name}</span>
                 {isAdminRoute && (
-                  <Badge className="ml-auto bg-purple-500/20 text-purple-300 border-purple-500/30 text-xs">
+                  <Badge className={cn(
+                    "ml-auto text-xs",
+                    isClean
+                      ? 'bg-amber-50 text-amber-600 border-amber-200'
+                      : 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                  )}>
                     Admin
                   </Badge>
                 )}
@@ -318,13 +371,26 @@ export function SidebarComFunis({ empresaNome }: SidebarProps) {
       </nav>
 
       {/* Logout */}
-      <div className="border-t border-slate-700/50 p-4 bg-gradient-to-r from-red-500/10 to-pink-500/10">
+      <div className={cn(
+        "sidebar-logout border-t p-4",
+        isClean
+          ? 'border-gray-200 bg-gray-50/50'
+          : 'border-slate-700/50 bg-gradient-to-r from-red-500/10 to-pink-500/10'
+      )}>
         <Button
           variant="ghost"
-          className="w-full justify-start text-slate-300 hover:bg-gradient-to-r hover:from-red-500/20 hover:to-pink-500/20 hover:text-white border border-transparent hover:border-red-500/30 transition-all duration-300 group"
+          className={cn(
+            "w-full justify-start transition-all duration-300 group border border-transparent",
+            isClean
+              ? 'text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200'
+              : 'text-slate-300 hover:bg-gradient-to-r hover:from-red-500/20 hover:to-pink-500/20 hover:text-white hover:border-red-500/30'
+          )}
           onClick={handleLogout}
         >
-          <LogOut className="mr-3 h-4 w-4 group-hover:text-red-400 transition-colors duration-300" />
+          <LogOut className={cn(
+            "mr-3 h-4 w-4 transition-colors duration-300",
+            isClean ? 'group-hover:text-red-500' : 'group-hover:text-red-400'
+          )} />
           <span className="font-medium">Sair</span>
         </Button>
       </div>

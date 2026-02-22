@@ -46,7 +46,7 @@ export function Sidebar({ empresaNome }: SidebarProps) {
           </div>
           <div className="text-left">
             <p className="text-sm font-bold text-white bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
-              Neural Traffic
+              Portal Empresarial
             </p>
             {empresaNome && (
               <Badge className="text-xs bg-gradient-to-r from-slate-700 to-slate-600 text-cyan-300 border-slate-600">

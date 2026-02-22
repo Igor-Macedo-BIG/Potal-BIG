@@ -7,6 +7,7 @@ import { Users, Eye, MousePointer, ExternalLink, UserCheck, ShoppingCart, Crown,
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface FunilEtapa {
   id: string;
@@ -32,6 +33,7 @@ interface MetricasAnterior {
 }
 
 export function FunilConversao() {
+  const { isClean } = useTheme();
   const { metricasCampanha, metricasGerais, campanhaAtiva, filtroData, filtroHierarquico } = useCampanhaContext();
   const [metricasAnterior, setMetricasAnterior] = useState<MetricasAnterior | null>(null);
   
@@ -189,10 +191,8 @@ export function FunilConversao() {
         const criativoIds = criativos?.map(cr => cr.id) || [];
         
         queries = [
-          supabase.from('metricas').select('*').eq('tipo', 'funil').eq('referencia_id', referenciaId).gte('periodo_inicio', periodoAnterior.dataInicio).lte('periodo_fim', periodoAnterior.dataFim),
+          // Para funil: usar métricas tipo='campanha' das campanhas do funil
           ...(campanhaIds.length > 0 ? [supabase.from('metricas').select('*').eq('tipo', 'campanha').in('referencia_id', campanhaIds).gte('periodo_inicio', periodoAnterior.dataInicio).lte('periodo_fim', periodoAnterior.dataFim)] : []),
-          ...(publicoIds.length > 0 ? [supabase.from('metricas').select('*').eq('tipo', 'publico').in('referencia_id', publicoIds).gte('periodo_inicio', periodoAnterior.dataInicio).lte('periodo_fim', periodoAnterior.dataFim)] : []),
-          ...(criativoIds.length > 0 ? [supabase.from('metricas').select('*').eq('tipo', 'criativo').in('referencia_id', criativoIds).gte('periodo_inicio', periodoAnterior.dataInicio).lte('periodo_fim', periodoAnterior.dataFim)] : [])
         ];
       } else if (tipo === 'campanha') {
         // Buscar públicos da campanha
@@ -202,34 +202,19 @@ export function FunilConversao() {
           .eq('campanha_id', referenciaId);
         const publicoIds = publicos?.map(p => p.id) || [];
         
-        // Buscar criativos dos públicos
-        const { data: criativos } = await supabase
-          .from('anuncios')
-          .select('id')
-          .in('conjunto_anuncio_id', publicoIds);
-        const criativoIds = criativos?.map(cr => cr.id) || [];
-        
         queries = [
+          // Para campanha: usar métricas tipo='campanha' da própria campanha
           supabase.from('metricas').select('*').eq('tipo', 'campanha').eq('referencia_id', referenciaId).gte('periodo_inicio', periodoAnterior.dataInicio).lte('periodo_fim', periodoAnterior.dataFim),
-          ...(publicoIds.length > 0 ? [supabase.from('metricas').select('*').eq('tipo', 'publico').in('referencia_id', publicoIds).gte('periodo_inicio', periodoAnterior.dataInicio).lte('periodo_fim', periodoAnterior.dataFim)] : []),
-          ...(criativoIds.length > 0 ? [supabase.from('metricas').select('*').eq('tipo', 'criativo').in('referencia_id', criativoIds).gte('periodo_inicio', periodoAnterior.dataInicio).lte('periodo_fim', periodoAnterior.dataFim)] : [])
         ];
       } else if (tipo === 'publico') {
-        // Buscar criativos do público
-        const { data: criativos } = await supabase
-          .from('anuncios')
-          .select('id')
-          .eq('conjunto_anuncio_id', referenciaId);
-        const criativoIds = criativos?.map(cr => cr.id) || [];
-        
         queries = [
-          supabase.from('metricas').select('*').eq('tipo', 'publico').eq('referencia_id', referenciaId).gte('periodo_inicio', periodoAnterior.dataInicio).lte('periodo_fim', periodoAnterior.dataFim),
-          ...(criativoIds.length > 0 ? [supabase.from('metricas').select('*').eq('tipo', 'criativo').in('referencia_id', criativoIds).gte('periodo_inicio', periodoAnterior.dataInicio).lte('periodo_fim', periodoAnterior.dataFim)] : [])
+          // Para público: usar métricas tipo='conjunto' do próprio conjunto
+          supabase.from('metricas').select('*').eq('tipo', 'conjunto').eq('referencia_id', referenciaId).gte('periodo_inicio', periodoAnterior.dataInicio).lte('periodo_fim', periodoAnterior.dataFim),
         ];
       } else {
         // Criativo: buscar apenas o próprio criativo
         queries = [
-          supabase.from('metricas').select('*').eq('tipo', 'criativo').eq('referencia_id', referenciaId).gte('periodo_inicio', periodoAnterior.dataInicio).lte('periodo_fim', periodoAnterior.dataFim)
+          supabase.from('metricas').select('*').eq('tipo', 'anuncio').eq('referencia_id', referenciaId).gte('periodo_inicio', periodoAnterior.dataInicio).lte('periodo_fim', periodoAnterior.dataFim)
         ];
       }
       
@@ -248,10 +233,9 @@ export function FunilConversao() {
       console.log('📊 Métricas anteriores encontradas:', {
         total: metricasArray.length,
         porTipo: {
-          funil: metricasArray.filter(m => m.tipo === 'funil').length,
           campanha: metricasArray.filter(m => m.tipo === 'campanha').length,
-          publico: metricasArray.filter(m => m.tipo === 'publico').length,
-          criativo: metricasArray.filter(m => m.tipo === 'criativo').length
+          conjunto: metricasArray.filter(m => m.tipo === 'conjunto').length,
+          anuncio: metricasArray.filter(m => m.tipo === 'anuncio').length
         }
       });
 
@@ -353,9 +337,9 @@ export function FunilConversao() {
 
   if (!metricasParaExibir) {
     return (
-      <Card className="bg-slate-900/50 backdrop-blur-xl border-slate-700/50">
+      <Card className={isClean ? 'bg-white border border-gray-200/60 shadow-sm' : 'bg-slate-900/50 backdrop-blur-xl border-slate-700/50'}>
         <CardContent className="p-8 text-center">
-          <div className="text-slate-400 text-lg">Selecione um funil, campanha, público ou criativo para ver o funil de conversão</div>
+          <div className={isClean ? 'text-gray-400 text-lg' : 'text-slate-400 text-lg'}>Selecione um funil, campanha, público ou criativo para ver o funil de conversão</div>
         </CardContent>
       </Card>
     );
@@ -369,8 +353,8 @@ export function FunilConversao() {
       valor: metricasParaExibir.impressoes || 0,
       valorAnterior: metricasAnterior?.impressoes || 0,
       icone: Eye,
-      cor: 'text-blue-400',
-      corFundo: 'bg-blue-500/10 border-blue-400/30',
+      cor: isClean ? 'text-blue-500' : 'text-blue-400',
+      corFundo: isClean ? 'bg-blue-50 border-blue-200' : 'bg-blue-500/10 border-blue-400/30',
       taxaConversao: 100,
       taxaConversaoAnterior: 100, // Impressões sempre 100%
     },
@@ -380,8 +364,8 @@ export function FunilConversao() {
       valor: metricasParaExibir.alcance || 0,
       valorAnterior: metricasAnterior?.alcance || 0,
       icone: Users,
-      cor: 'text-indigo-400',
-      corFundo: 'bg-indigo-500/10 border-indigo-400/30',
+      cor: isClean ? 'text-indigo-500' : 'text-indigo-400',
+      corFundo: isClean ? 'bg-indigo-50 border-indigo-200' : 'bg-indigo-500/10 border-indigo-400/30',
       taxaConversao: metricasParaExibir.impressoes ? ((metricasParaExibir.alcance || 0) / metricasParaExibir.impressoes * 100) : 0,
       taxaConversaoAnterior: (metricasAnterior?.impressoes && metricasAnterior.impressoes > 0) ? ((metricasAnterior.alcance || 0) / metricasAnterior.impressoes * 100) : 0,
     },
@@ -391,8 +375,8 @@ export function FunilConversao() {
       valor: metricasParaExibir.cliques || 0,
       valorAnterior: metricasAnterior?.cliques || 0,
       icone: MousePointer,
-      cor: 'text-purple-400',
-      corFundo: 'bg-purple-500/10 border-purple-400/30',
+      cor: isClean ? 'text-purple-500' : 'text-purple-400',
+      corFundo: isClean ? 'bg-purple-50 border-purple-200' : 'bg-purple-500/10 border-purple-400/30',
       taxaConversao: metricasParaExibir.alcance ? ((metricasParaExibir.cliques || 0) / metricasParaExibir.alcance * 100) : 0,
       taxaConversaoAnterior: (metricasAnterior?.alcance && metricasAnterior.alcance > 0) ? ((metricasAnterior.cliques || 0) / metricasAnterior.alcance * 100) : 0,
     },
@@ -402,8 +386,8 @@ export function FunilConversao() {
       valor: metricasParaExibir.visualizacoes_pagina || 0,
       valorAnterior: metricasAnterior?.visualizacoes_pagina || 0,
       icone: ExternalLink,
-      cor: 'text-pink-400',
-      corFundo: 'bg-pink-500/10 border-pink-400/30',
+      cor: isClean ? 'text-pink-500' : 'text-pink-400',
+      corFundo: isClean ? 'bg-pink-50 border-pink-200' : 'bg-pink-500/10 border-pink-400/30',
       taxaConversao: metricasParaExibir.cliques ? ((metricasParaExibir.visualizacoes_pagina || 0) / metricasParaExibir.cliques * 100) : 0,
       taxaConversaoAnterior: (metricasAnterior?.cliques && metricasAnterior.cliques > 0) ? ((metricasAnterior.visualizacoes_pagina || 0) / metricasAnterior.cliques * 100) : 0,
     },
@@ -413,8 +397,8 @@ export function FunilConversao() {
       valor: metricasParaExibir.checkouts || 0,
       valorAnterior: metricasAnterior?.checkouts || 0,
       icone: ShoppingCart,
-      cor: 'text-orange-400',
-      corFundo: 'bg-orange-500/10 border-orange-400/30',
+      cor: isClean ? 'text-orange-500' : 'text-orange-400',
+      corFundo: isClean ? 'bg-orange-50 border-orange-200' : 'bg-orange-500/10 border-orange-400/30',
       taxaConversao: metricasParaExibir.visualizacoes_pagina ? ((metricasParaExibir.checkouts || 0) / metricasParaExibir.visualizacoes_pagina * 100) : 0,
       taxaConversaoAnterior: (metricasAnterior?.visualizacoes_pagina && metricasAnterior.visualizacoes_pagina > 0) ? ((metricasAnterior.checkouts || 0) / metricasAnterior.visualizacoes_pagina * 100) : 0,
       isKPI: true
@@ -425,8 +409,8 @@ export function FunilConversao() {
       valor: metricasParaExibir.leads || 0,
       valorAnterior: metricasAnterior?.leads || 0,
       icone: UserCheck,
-      cor: 'text-green-400',
-      corFundo: 'bg-green-500/10 border-green-400/30',
+      cor: isClean ? 'text-green-500' : 'text-green-400',
+      corFundo: isClean ? 'bg-green-50 border-green-200' : 'bg-green-500/10 border-green-400/30',
       taxaConversao: metricasParaExibir.checkouts ? ((metricasParaExibir.leads || 0) / metricasParaExibir.checkouts * 100) : 0,
       taxaConversaoAnterior: (metricasAnterior?.checkouts && metricasAnterior.checkouts > 0) ? ((metricasAnterior.leads || 0) / metricasAnterior.checkouts * 100) : 0,
       isKPI: true
@@ -437,8 +421,8 @@ export function FunilConversao() {
       valor: metricasParaExibir.vendas || 0,
       valorAnterior: metricasAnterior?.vendas || 0,
       icone: Crown,
-      cor: 'text-yellow-400',
-      corFundo: 'bg-yellow-500/10 border-yellow-400/30',
+      cor: isClean ? 'text-yellow-500' : 'text-yellow-400',
+      corFundo: isClean ? 'bg-yellow-50 border-yellow-200' : 'bg-yellow-500/10 border-yellow-400/30',
       taxaConversao: metricasParaExibir.leads ? ((metricasParaExibir.vendas || 0) / metricasParaExibir.leads * 100) : 0,
       taxaConversaoAnterior: (metricasAnterior?.leads && metricasAnterior.leads > 0) ? ((metricasAnterior.vendas || 0) / metricasAnterior.leads * 100) : 0,
       isKPI: true
@@ -457,6 +441,12 @@ export function FunilConversao() {
   };
 
   const obterCorTaxa = (taxa: number) => {
+    if (isClean) {
+      if (taxa >= 15) return 'text-emerald-600 bg-emerald-50 border-emerald-200';
+      if (taxa >= 8) return 'text-green-600 bg-green-50 border-green-200';
+      if (taxa >= 3) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+      return 'text-red-600 bg-red-50 border-red-200';
+    }
     if (taxa >= 15) return 'text-emerald-400 bg-emerald-500/20 border-emerald-400/50';
     if (taxa >= 8) return 'text-green-400 bg-green-500/20 border-green-400/50';
     if (taxa >= 3) return 'text-yellow-400 bg-yellow-500/20 border-yellow-400/50';
@@ -507,20 +497,25 @@ export function FunilConversao() {
 
   // Função para obter cor da variação
   const obterCorVariacao = (variacao: number) => {
+    if (isClean) {
+      if (variacao > 0) return 'text-emerald-600 bg-emerald-50';
+      if (variacao < 0) return 'text-red-600 bg-red-50';
+      return 'text-gray-500 bg-gray-50';
+    }
     if (variacao > 0) return 'text-emerald-400 bg-emerald-500/10';
     if (variacao < 0) return 'text-red-400 bg-red-500/10';
     return 'text-slate-400 bg-slate-500/10';
   };
 
   return (
-    <Card className="bg-slate-900/60 backdrop-blur-xl border-slate-700/50">
+    <Card className={cn('funnel-container', isClean ? 'bg-white border border-gray-200/60 shadow-sm' : 'bg-slate-900/60 backdrop-blur-xl border-slate-700/50')}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-xl font-black text-white flex items-center gap-2">
-            <Target className="h-5 w-5 text-cyan-400" />
+          <CardTitle className={cn('text-xl font-black flex items-center gap-2', isClean ? 'text-gray-900' : 'text-white')}>
+            <Target className={cn('h-5 w-5', isClean ? 'text-amber-600' : 'text-cyan-400')} />
             Funil de Conversão
           </CardTitle>
-          <p className="text-slate-500 text-[10px] font-medium">
+          <p className={cn('text-[10px] font-medium', isClean ? 'text-gray-400' : 'text-slate-500')}>
             Jornada dos clientes
           </p>
         </div>
@@ -537,15 +532,21 @@ export function FunilConversao() {
                 {/* Card Principal */}
                 <div className={cn(
                   'relative p-3 rounded-lg border-2 transition-all duration-300 hover:scale-105',
-                  'backdrop-blur-sm shadow-lg hover:shadow-2xl min-h-[150px]',
+                  isClean ? 'shadow-sm hover:shadow-md' : 'backdrop-blur-sm shadow-lg hover:shadow-2xl',
+                  'min-h-[150px]',
                   etapa.corFundo,
-                  etapa.isKPI ? 'ring-2 ring-yellow-400/40' : ''
+                  etapa.isKPI ? (isClean ? 'ring-2 ring-amber-200' : 'ring-2 ring-yellow-400/40') : ''
                 )}>
                   
                   {/* Badge KPI */}
                   {etapa.isKPI && (
                     <div className="absolute -top-2 -right-2 z-10">
-                      <Badge className="bg-gradient-to-r from-yellow-400 to-amber-500 text-black font-black text-[10px] px-1.5 py-0.5 animate-pulse">
+                      <Badge className={cn(
+                        'font-black text-[10px] px-1.5 py-0.5',
+                        isClean
+                          ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white'
+                          : 'bg-gradient-to-r from-yellow-400 to-amber-500 text-black animate-pulse'
+                      )}>
                         KPI 
                       </Badge>
                     </div>
@@ -555,11 +556,13 @@ export function FunilConversao() {
                   <div className="flex justify-center mb-2">
                     <div className={cn(
                       'p-2 rounded-full transition-colors',
-                      etapa.isKPI ? 'bg-yellow-500/20' : 'bg-white/10'
+                      etapa.isKPI
+                        ? (isClean ? 'bg-amber-50' : 'bg-yellow-500/20')
+                        : (isClean ? 'bg-gray-100' : 'bg-white/10')
                     )}>
                       <Icone className={cn(
                         'h-5 w-5',
-                        etapa.isKPI ? 'text-yellow-400' : etapa.cor
+                        etapa.isKPI ? (isClean ? 'text-amber-600' : 'text-yellow-400') : etapa.cor
                       )} />
                     </div>
                   </div>
@@ -568,7 +571,9 @@ export function FunilConversao() {
                   <div className="text-center mb-1.5">
                     <h3 className={cn(
                       'text-sm font-bold tracking-wide',
-                      etapa.isKPI ? 'text-yellow-200' : 'text-white'
+                      etapa.isKPI
+                        ? (isClean ? 'text-amber-700' : 'text-yellow-200')
+                        : (isClean ? 'text-gray-700' : 'text-white')
                     )}>
                       {etapa.nome}
                     </h3>
@@ -577,15 +582,18 @@ export function FunilConversao() {
                   {/* Valor Principal - DESTAQUE MÁXIMO */}
                   <div className="text-center mb-2">
                     <div className={cn(
-                      'font-black tracking-tight leading-none drop-shadow-2xl',
-                      etapa.isKPI ? 'text-2xl text-white' : 'text-xl text-white'
+                      'font-black tracking-tight leading-none',
+                      isClean ? '' : 'drop-shadow-2xl',
+                      etapa.isKPI
+                        ? (isClean ? 'text-2xl text-gray-900' : 'text-2xl text-white')
+                        : (isClean ? 'text-xl text-gray-900' : 'text-xl text-white')
                     )}>
                       {etapa.valor === 0 ? '-' : formatarNumero(etapa.valor)}
                     </div>
 
                     {/* Comparação com período anterior - DESTACADA */}
                     {deveExibirComparacao(etapa.valorAnterior || 0, etapa.id) ? (
-                      <div className="mt-2 border-t border-slate-700/30 pt-2">
+                      <div className={cn('mt-2 pt-2', isClean ? 'border-t border-gray-200' : 'border-t border-slate-700/30')}>
                         {(() => {
                           // Calcular variação real com base nos dados dos períodos
                           const variacao = calcularVariacao(etapa.valor, etapa.valorAnterior || 0);
@@ -595,9 +603,11 @@ export function FunilConversao() {
                             <div className="flex items-center justify-center">
                               <div className={cn(
                                 'flex items-center gap-1.5 px-2 py-1.5 rounded-lg font-black text-xs border-2',
-                                variacao && variacao > 0 ? 'text-emerald-300 bg-emerald-500/20 border-emerald-500/40' :
-                                variacao && variacao < 0 ? 'text-red-300 bg-red-500/20 border-red-500/40' :
-                                'text-slate-300 bg-slate-500/20 border-slate-500/40'
+                                variacao && variacao > 0
+                                  ? (isClean ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : 'text-emerald-300 bg-emerald-500/20 border-emerald-500/40')
+                                  : variacao && variacao < 0
+                                    ? (isClean ? 'text-red-600 bg-red-50 border-red-200' : 'text-red-300 bg-red-500/20 border-red-500/40')
+                                    : (isClean ? 'text-gray-500 bg-gray-50 border-gray-200' : 'text-slate-300 bg-slate-500/20 border-slate-500/40')
                               )}>
                                 <IconeVariacao className="h-3.5 w-3.5" />
                                 <span className="text-sm">{formatarVariacao(variacao)}</span>
@@ -606,13 +616,16 @@ export function FunilConversao() {
                           );
                         })()}
                         <div className="text-center mt-0.5">
-                          <span className="text-[10px] text-slate-500 font-medium">vs anterior</span>
+                          <span className={cn('text-[10px] font-medium', isClean ? 'text-gray-400' : 'text-slate-500')}>vs anterior</span>
                         </div>
                       </div>
                     ) : (
-                      <div className="mt-2 border-t border-slate-700/30 pt-2">
+                      <div className={cn('mt-2 pt-2', isClean ? 'border-t border-gray-200' : 'border-t border-slate-700/30')}>
                         <div className="flex items-center justify-center">
-                          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg font-medium text-xs border-2 text-slate-400 bg-slate-600/20 border-slate-600/40">
+                          <div className={cn(
+                            'flex items-center gap-1.5 px-2 py-1 rounded-lg font-medium text-xs border-2',
+                            isClean ? 'text-gray-400 bg-gray-50 border-gray-200' : 'text-slate-400 bg-slate-600/20 border-slate-600/40'
+                          )}>
                             <Minus className="h-3 w-3" />
                             <span className="text-[10px]">Sem dados</span>
                           </div>
@@ -624,7 +637,7 @@ export function FunilConversao() {
                   {/* Taxa de Conversão */}
                   {index > 0 && (
                     <div className="text-center">
-                      <div className="text-[9px] text-slate-400 uppercase tracking-wider mb-1 font-bold">
+                      <div className={cn('text-[9px] uppercase tracking-wider mb-1 font-bold', isClean ? 'text-gray-400' : 'text-slate-400')}>
                         Conv
                       </div>
                       <Badge className={cn(
@@ -645,9 +658,11 @@ export function FunilConversao() {
                               <div className="flex items-center justify-center">
                                 <div className={cn(
                                   'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold',
-                                  variacaoTaxa && variacaoTaxa > 0 ? 'text-emerald-400 bg-emerald-500/10' :
-                                  variacaoTaxa && variacaoTaxa < 0 ? 'text-red-400 bg-red-500/10' :
-                                  'text-slate-400 bg-slate-500/10'
+                                  variacaoTaxa && variacaoTaxa > 0
+                                    ? (isClean ? 'text-emerald-600 bg-emerald-50' : 'text-emerald-400 bg-emerald-500/10')
+                                    : variacaoTaxa && variacaoTaxa < 0
+                                      ? (isClean ? 'text-red-600 bg-red-50' : 'text-red-400 bg-red-500/10')
+                                      : (isClean ? 'text-gray-500 bg-gray-50' : 'text-slate-400 bg-slate-500/10')
                                 )}>
                                   <IconeVariacaoTaxa className="h-2.5 w-2.5" />
                                   <span>{formatarVariacao(variacaoTaxa)}</span>
@@ -659,7 +674,10 @@ export function FunilConversao() {
                       ) : (
                         <div className="mt-1.5">
                           <div className="flex items-center justify-center">
-                            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-slate-500 bg-slate-600/10">
+                            <div className={cn(
+                              'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px]',
+                              isClean ? 'text-gray-400 bg-gray-50' : 'text-slate-500 bg-slate-600/10'
+                            )}>
                               <Minus className="h-2.5 w-2.5" />
                               <span>-</span>
                             </div>
@@ -671,15 +689,23 @@ export function FunilConversao() {
 
                   {/* Efeito de brilho para KPIs */}
                   {etapa.isKPI && (
-                    <div className="absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity duration-300 bg-gradient-to-br from-yellow-400/20 to-orange-400/20 rounded-xl pointer-events-none" />
+                    <div className={cn(
+                      'absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity duration-300 rounded-xl pointer-events-none',
+                      isClean
+                        ? 'bg-gradient-to-br from-amber-500/10 to-amber-600/10'
+                        : 'bg-gradient-to-br from-yellow-400/20 to-orange-400/20'
+                    )} />
                   )}
                 </div>
 
                 {/* Seta conectora (apenas para telas grandes) */}
                 {index < etapas.length - 1 && (
                   <div className="hidden 2xl:flex absolute -right-3 top-1/2 transform -translate-y-1/2 z-20">
-                    <div className="bg-slate-800/80 rounded-full p-1.5 border-2 border-slate-600">
-                      <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+                    <div className={cn(
+                      'rounded-full p-1.5 border-2',
+                      isClean ? 'bg-white border-gray-300 shadow-sm' : 'bg-slate-800/80 border-slate-600'
+                    )}>
+                      <ArrowRight className={cn('h-3.5 w-3.5', isClean ? 'text-gray-400' : 'text-slate-400')} />
                     </div>
                   </div>
                 )}

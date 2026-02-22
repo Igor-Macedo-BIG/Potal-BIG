@@ -2,23 +2,29 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-type Theme = 'sistema' | 'dark' | 'clean';
+type Theme = 'dark' | 'clean';
 
 interface ThemeContextType {
   theme: Theme;
   setTheme: (theme: Theme) => void;
+  isClean: boolean;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('sistema');
+  const [theme, setThemeState] = useState<Theme>('dark');
   const [mounted, setMounted] = useState(false);
 
   // Aplicar tema imediatamente no carregamento
   useEffect(() => {
     setMounted(true);
-    const savedTheme = (localStorage.getItem('painel-theme') as Theme) || 'sistema';
+    let savedTheme = localStorage.getItem('painel-theme') as Theme | null;
+    // Migrar tema antigo 'sistema' para 'dark'
+    if (!savedTheme || savedTheme === 'sistema' as string) {
+      savedTheme = 'dark';
+      localStorage.setItem('painel-theme', 'dark');
+    }
     setThemeState(savedTheme);
     applyTheme(savedTheme);
   }, []);
@@ -39,8 +45,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     
     // Adicionar a classe do tema selecionado
     root.classList.add(`theme-${selectedTheme}`);
-    
-    console.log('🎨 Tema aplicado:', selectedTheme, 'Classes:', root.className);
   };
 
   // Evitar flash de tema incorreto
@@ -49,7 +53,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme }}>
+    <ThemeContext.Provider value={{ theme, setTheme, isClean: theme === 'clean' }}>
       {children}
     </ThemeContext.Provider>
   );
