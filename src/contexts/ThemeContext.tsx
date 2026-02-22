@@ -13,17 +13,17 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('dark');
+  const [theme, setThemeState] = useState<Theme>('clean');
   const [mounted, setMounted] = useState(false);
 
   // Aplicar tema imediatamente no carregamento
   useEffect(() => {
     setMounted(true);
     let savedTheme = localStorage.getItem('painel-theme') as Theme | null;
-    // Migrar tema antigo 'sistema' para 'dark'
+    // Migrar tema antigo 'sistema' para 'clean'
     if (!savedTheme || savedTheme === 'sistema' as string) {
-      savedTheme = 'dark';
-      localStorage.setItem('painel-theme', 'dark');
+      savedTheme = 'clean';
+      localStorage.setItem('painel-theme', 'clean');
     }
     setThemeState(savedTheme);
     applyTheme(savedTheme);
