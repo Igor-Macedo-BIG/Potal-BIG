@@ -9,250 +9,132 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { useTheme } from '@/contexts/ThemeContext';
 import { 
-  Shield, 
-  Briefcase, 
-  HeadphonesIcon, 
-  Phone, 
-  Handshake, 
-  Share2,
   Sparkles,
-  ArrowRight,
   Lock,
   Mail,
   Eye,
-  EyeOff
+  EyeOff,
+  ArrowRight
 } from 'lucide-react';
 
-type UserRole = 'admin' | 'gestor' | 'cs' | 'sdr' | 'closer' | 'social-seller';
-
-interface RoleOption {
-  value: UserRole;
-  label: string;
-  icon: any;
-  color: string;
-  gradient: string;
-}
-
-const roles: RoleOption[] = [
-  {
-    value: 'admin',
-    label: 'Administrador',
-    icon: Shield,
-    color: 'from-purple-600 to-pink-600',
-    gradient: 'bg-gradient-to-br from-purple-500/20 to-pink-500/20'
-  },
-  {
-    value: 'gestor',
-    label: 'Gestor de Marketing',
-    icon: Briefcase,
-    color: 'from-blue-600 to-cyan-600',
-    gradient: 'bg-gradient-to-br from-blue-500/20 to-cyan-500/20'
-  },
-  {
-    value: 'cs',
-    label: 'Customer Success',
-    icon: HeadphonesIcon,
-    color: 'from-green-600 to-emerald-600',
-    gradient: 'bg-gradient-to-br from-green-500/20 to-emerald-500/20'
-  },
-  {
-    value: 'sdr',
-    label: 'SDR',
-    icon: Phone,
-    color: 'from-orange-600 to-yellow-600',
-    gradient: 'bg-gradient-to-br from-orange-500/20 to-yellow-500/20'
-  },
-  {
-    value: 'closer',
-    label: 'Closer',
-    icon: Handshake,
-    color: 'from-red-600 to-rose-600',
-    gradient: 'bg-gradient-to-br from-red-500/20 to-rose-500/20'
-  },
-  {
-    value: 'social-seller',
-    label: 'Social Seller',
-    icon: Share2,
-    color: 'from-indigo-600 to-purple-600',
-    gradient: 'bg-gradient-to-br from-indigo-500/20 to-purple-500/20'
-  }
-];
-
-const rolesClean: RoleOption[] = [
-  {
-    value: 'admin',
-    label: 'Administrador',
-    icon: Shield,
-    color: 'from-amber-600 to-amber-700',
-    gradient: 'bg-gradient-to-br from-amber-500/20 to-amber-600/20'
-  },
-  {
-    value: 'gestor',
-    label: 'Gestor de Marketing',
-    icon: Briefcase,
-    color: 'from-blue-500 to-blue-600',
-    gradient: 'bg-gradient-to-br from-blue-500/20 to-blue-600/20'
-  },
-  {
-    value: 'cs',
-    label: 'Customer Success',
-    icon: HeadphonesIcon,
-    color: 'from-emerald-500 to-emerald-600',
-    gradient: 'bg-gradient-to-br from-emerald-500/20 to-emerald-600/20'
-  },
-  {
-    value: 'sdr',
-    label: 'SDR',
-    icon: Phone,
-    color: 'from-orange-500 to-orange-600',
-    gradient: 'bg-gradient-to-br from-orange-500/20 to-orange-600/20'
-  },
-  {
-    value: 'closer',
-    label: 'Closer',
-    icon: Handshake,
-    color: 'from-rose-500 to-rose-600',
-    gradient: 'bg-gradient-to-br from-rose-500/20 to-rose-600/20'
-  },
-  {
-    value: 'social-seller',
-    label: 'Social Seller',
-    icon: Share2,
-    color: 'from-indigo-500 to-indigo-600',
-    gradient: 'bg-gradient-to-br from-indigo-500/20 to-indigo-600/20'
-  }
-];
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
-  const [roleSelected, setRoleSelected] = useState<UserRole | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { isClean } = useTheme();
-  const activeRoles = isClean ? rolesClean : roles;
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('🚀 Login iniciado');
 
     if (!email || !senha) {
       toast.error('Preencha email e senha');
       return;
     }
 
-    if (!roleSelected) {
-      toast.error('Selecione seu tipo de acesso');
-      return;
-    }
-
     setLoading(true);
-    console.log('📧 Email:', email);
-    console.log('🎯 Role selecionado:', roleSelected);
 
     try {
+      console.log('[Login] Tentando autenticar com email:', email);
+      
       // 1. Autenticar com Supabase
-      console.log('🔐 Tentando autenticar...');
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password: senha,
       });
 
+      console.log('[Login] Auth response:', { authData: authData?.user?.id, authError });
+
       if (authError) {
-        console.error('❌ Erro de autenticação:', authError);
-        
-        // Tratar erros específicos de autenticação
+        console.error('[Login] Auth error:', authError);
         if (authError.message.includes('Invalid login credentials')) {
           toast.error('Email ou senha incorretos');
         } else if (authError.message.includes('Email not confirmed')) {
-          toast.error('Email não confirmado. Entre em contato com o administrador.');
-        } else if (authError.message.includes('Email not found')) {
-          toast.error('Email não cadastrado no sistema');
+          toast.error('Email não confirmado');
         } else {
-          toast.error('Erro ao fazer login. Verifique suas credenciais.');
+          toast.error(`Erro ao fazer login: ${authError.message}`);
         }
         setLoading(false);
         return;
       }
 
       if (!authData.user) {
-        console.error('❌ Usuário não retornado');
-        toast.error('Erro ao processar login. Tente novamente.');
+        console.error('[Login] Nenhum usuário retornado');
+        toast.error('Erro ao processar login');
         setLoading(false);
         return;
       }
 
-      console.log('✅ Autenticado! User ID:', authData.user.id);
+      console.log('[Login] Autenticação bem-sucedida, ID:', authData.user.id);
+      console.log('[Login] Buscando dados do usuário na tabela users...');
 
-      // 2. Buscar dados do usuário na tabela users
-      console.log('📊 Buscando dados na tabela users...');
+      // 2. Buscar dados do usuário
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('*')
         .eq('id', authData.user.id)
         .single();
 
+      console.log('[Login] Query users response:', { userData, userError });
+
       if (userError) {
-        console.error('❌ Erro ao buscar dados do usuário:', userError);
-        toast.error('Erro ao carregar perfil. Entre em contato com o administrador.');
+        console.error('[Login] Erro ao buscar usuário:', userError);
+        if (userError.message.includes('406')) {
+          // 406 pode significar: nenhum resultado ou múltiplos resultados
+          const { data: allUsers, error: allError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', authData.user.id);
+          
+          console.log('[Login] Debug - todos os users com esse ID:', { allUsers, allError });
+          toast.error('Perfil de usuário não encontrado. Contate o administrador.');
+        } else {
+          toast.error('Perfil não encontrado');
+        }
         await supabase.auth.signOut();
         setLoading(false);
         return;
       }
 
       if (!userData) {
-        console.error('❌ Usuário não encontrado na tabela users');
-        toast.error('Perfil não encontrado no sistema. Entre em contato com o administrador.');
+        console.error('[Login] userData é nulo');
+        toast.error('Perfil não encontrado');
         await supabase.auth.signOut();
         setLoading(false);
         return;
       }
 
-      console.log('✅ Dados encontrados:', userData);
-
-      // 3. Verificar se o role corresponde
-      if (userData.role !== roleSelected) {
-        console.error('❌ Role não corresponde:', userData.role, 'vs', roleSelected);
-        toast.error(`Este usuário não tem acesso como ${roles.find(r => r.value === roleSelected)?.label}`);
-        await supabase.auth.signOut();
-        setLoading(false);
-        return;
-      }
-
-      // 4. Verificar se está ativo
+      // 3. Verificar se está ativo
       if (!userData.ativo) {
-        console.error('❌ Usuário inativo');
-        toast.error('Usuário inativo. Entre em contato com o administrador.');
+        console.warn('[Login] Usuário inativo');
+        toast.error('Usuário inativo');
         await supabase.auth.signOut();
         setLoading(false);
         return;
       }
 
-      // 5. Salvar role no localStorage
-      console.log('💾 Salvando no localStorage...');
+      console.log('[Login] Login bem-sucedido para:', userData.nome);
+
+      // 4. Salvar dados no localStorage
       localStorage.setItem('user-role', userData.role);
       localStorage.setItem('user-name', userData.nome);
+      localStorage.setItem('user-id', authData.user.id);
+      if (userData.empresa_id) {
+        localStorage.setItem('empresa-id', userData.empresa_id);
+      }
 
-      console.log('🎉 Login bem-sucedido!');
       toast.success(`Bem-vindo(a), ${userData.nome}!`);
 
-      // 6. Redirecionar para Dashboard Geral
-      console.log('🔄 Redirecionando para Dashboard Geral...');
+      // 5. Redirecionar
       setTimeout(() => {
         router.push('/');
       }, 1000);
 
     } catch (error: any) {
-      console.error('❌ ERRO NO LOGIN:', error);
-      
-      // Não mostrar erro genérico já que tratamos os erros específicos acima
-      // Isso só vai pegar erros inesperados
-      if (error?.message) {
-        console.error('Detalhes:', error.message);
-      }
-      
-      toast.error('Erro inesperado. Tente novamente ou entre em contato com o suporte.');
+      console.error('[Login] Erro inesperado:', error);
+      toast.error('Erro inesperado. Tente novamente');
     } finally {
       setLoading(false);
     }
@@ -289,10 +171,10 @@ export default function LoginPage() {
               key={i}
               className="absolute w-1 h-1 bg-white/40 rounded-full animate-float"
               style={{
-                left: `${Math.random() * 100}%`,
-                top: `${Math.random() * 100}%`,
-                animationDelay: `${Math.random() * 5}s`,
-                animationDuration: `${5 + Math.random() * 10}s`
+                left: `${((i * 37 + 13) % 100)}%`,
+                top: `${((i * 53 + 7) % 100)}%`,
+                animationDelay: `${(i * 0.25) % 5}s`,
+                animationDuration: `${5 + (i * 0.5) % 10}s`
               }}
             />
           ))}
@@ -320,7 +202,7 @@ export default function LoginPage() {
                 PORTAL
               </span>
               <br />
-              <span className={isClean ? 'text-gray-900' : 'text-white'}>LÍDIA CABRAL</span>
+              <span className={isClean ? 'text-gray-900' : 'text-white'}>IGOR MACEDO</span>
             </h1>
 
             <p className={isClean ? 'text-xl text-gray-500 max-w-md' : 'text-xl text-gray-300 max-w-md'}>
@@ -352,50 +234,10 @@ export default function LoginPage() {
             }`}>
               <div className="text-center mb-8">
                 <h2 className={`text-3xl font-bold mb-2 ${isClean ? 'text-gray-900' : 'text-white'}`}>Acesse sua conta</h2>
-                <p className={isClean ? 'text-gray-500' : 'text-gray-400'}>Selecione seu tipo de acesso abaixo</p>
+                <p className={isClean ? 'text-gray-500' : 'text-gray-400'}>Digite suas credenciais para continuar</p>
               </div>
 
               <form onSubmit={handleLogin} className="space-y-6">
-                {/* Role Selection */}
-                <div>
-                  <Label className={`mb-3 block ${isClean ? 'text-gray-700' : 'text-white'}`}>Tipo de Acesso</Label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {activeRoles.map((role) => {
-                      const Icon = role.icon;
-                      const isSelected = roleSelected === role.value;
-                      return (
-                        <button
-                          key={role.value}
-                          type="button"
-                          onClick={() => setRoleSelected(role.value)}
-                          className={`relative p-4 rounded-xl border-2 transition-all ${
-                            isClean
-                              ? isSelected
-                                ? 'border-amber-400 bg-amber-50 scale-105 shadow-md'
-                                : 'border-gray-200 bg-gray-50 hover:border-amber-200 hover:bg-amber-50/50'
-                              : isSelected
-                                ? 'border-purple-500 bg-purple-500/20 scale-105'
-                                : 'border-gray-700 bg-gray-800/50 hover:border-gray-600'
-                          }`}
-                        >
-                          <div className="flex flex-col items-center gap-2">
-                            <div className={`h-10 w-10 rounded-lg bg-gradient-to-br ${role.color} flex items-center justify-center`}>
-                              <Icon className="h-5 w-5 text-white" />
-                            </div>
-                            <span className={`text-xs font-medium text-center ${isClean ? 'text-gray-700' : 'text-white'}`}>
-                              {role.label}
-                            </span>
-                          </div>
-                          {isSelected && (
-                            <div className={`absolute -top-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center ${isClean ? 'bg-amber-500' : 'bg-purple-500'}`}>
-                              <div className="h-2 w-2 bg-white rounded-full"></div>
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
 
                 {/* Email */}
                 <div>

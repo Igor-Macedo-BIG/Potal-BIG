@@ -47,13 +47,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     root.classList.add(`theme-${selectedTheme}`);
   };
 
-  // Evitar flash de tema incorreto
-  if (!mounted) {
-    return null;
-  }
+  // Durante SSR e antes do mount, renderizar com valores padrão
+  // NUNCA retornar null aqui — causaria hydration mismatch fatal
+  // (React gera HTML vazio no servidor, depois tenta inserir tudo no cliente)
+  const value = mounted
+    ? { theme, setTheme, isClean: theme === 'clean' }
+    : { theme: 'clean' as Theme, setTheme: () => {}, isClean: true };
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, isClean: theme === 'clean' }}>
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   );

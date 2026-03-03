@@ -22,9 +22,9 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>({
     id: '1',
-    email: 'admin@lidiacabral.com',
+    email: 'admin@igormacedo.com',
     role: 'admin',
-    name: 'Admin Lídia Cabral'
+    name: 'Admin Igor Macedo'
   });
 
   const hasEditPermission = (section: UserRole): boolean => {

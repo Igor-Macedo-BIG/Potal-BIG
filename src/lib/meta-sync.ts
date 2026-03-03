@@ -20,7 +20,10 @@ import {
   MetaInsight,
   extractLeadsFromActions,
   extractPurchasesFromActions,
-  extractPageViewsFromActions
+  extractPageViewsFromActions,
+  extractMessagesFromActions,
+  extractWhatsAppLeadsFromActions,
+  extractMessengerLeadsFromActions
 } from '@/lib/meta-client';
 
 // ============================================
@@ -345,7 +348,7 @@ async function syncCampaigns(
 
         if (existingId) {
           // Atualizar existente (inclui empresa_id para corrigir campanhas antigas sem ele)
-          await supabase
+          const { error: updateError } = await supabase
             .from('campanhas')
             .update({
               nome: mc.name,
@@ -355,10 +358,33 @@ async function syncCampaigns(
             })
             .eq('id', existingId);
           
-          mapping.set(mc.id, existingId);
-          stats.atualizadas++;
+          if (updateError) {
+            console.error(`[Sync] Erro ao atualizar campanha "${mc.name}":`, updateError.message);
+            erros.push(`Erro ao atualizar campanha ${mc.name}: ${updateError.message}`);
+          } else {
+            mapping.set(mc.id, existingId);
+            stats.atualizadas++;
+          }
         } else {
           // Criar nova campanha (funil_id pode ser null)
+          // Mapear objective da Meta para valores aceitos pelo banco
+          const tipoMap: Record<string, string> = {
+            'OUTCOME_SALES': 'vendas',
+            'OUTCOME_LEADS': 'leads',
+            'OUTCOME_AWARENESS': 'awareness',
+            'OUTCOME_ENGAGEMENT': 'leads',
+            'OUTCOME_TRAFFIC': 'leads',
+            'OUTCOME_APP_PROMOTION': 'vendas',
+            'CONVERSIONS': 'vendas',
+            'LEAD_GENERATION': 'leads',
+            'LINK_CLICKS': 'leads',
+            'REACH': 'awareness',
+            'BRAND_AWARENESS': 'awareness',
+            'POST_ENGAGEMENT': 'leads',
+            'VIDEO_VIEWS': 'awareness',
+            'MESSAGES': 'leads',
+          };
+          const tipoNormalizado = tipoMap[mc.objective] || 'leads';
           const { data: created, error } = await supabase
             .from('campanhas')
             .insert({
@@ -367,13 +393,14 @@ async function syncCampaigns(
               funil_id: funilPadraoId || null,
               empresa_id: empresaId,
               plataforma: 'Meta Ads',
-              tipo: mc.objective || 'Campanha',
+              tipo: tipoNormalizado,
               ativo: mc.status === 'ACTIVE'
             })
             .select()
             .single();
 
           if (error) {
+            console.error(`[Sync] Erro ao criar campanha "${mc.name}":`, error.message, error.details, error.hint);
             erros.push(`Erro ao criar campanha ${mc.name}: ${error.message}`);
           } else {
             mapping.set(mc.id, created.id);
@@ -386,6 +413,11 @@ async function syncCampaigns(
       } catch (err) {
         erros.push(`Erro processando campanha ${mc.name}: ${err instanceof Error ? err.message : 'Erro'}`);
       }
+    }
+
+    console.log(`[Sync Campanhas] Resultado: ${stats.criadas} criadas, ${stats.atualizadas} atualizadas, ${erros.length} erros`);
+    if (stats.processadas > 0 && stats.criadas === 0 && stats.atualizadas === 0) {
+      console.error('[Sync Campanhas] ⚠️ NENHUMA campanha foi salva no banco! Possível problema de constraint (funil_id NOT NULL?) ou RLS.');
     }
   } catch (err) {
     erros.push(`Erro buscando campanhas da Meta: ${err instanceof Error ? err.message : 'Erro'}`);
@@ -814,6 +846,9 @@ function convertInsightToMetrica(
   const leads = extractLeadsFromActions(insight.actions);
   const vendas = extractPurchasesFromActions(insight.actions);
   const visualizacoesPagina = extractPageViewsFromActions(insight.actions);
+  const leads_whatsapp = extractWhatsAppLeadsFromActions(insight.actions);
+  const leads_messenger = extractMessengerLeadsFromActions(insight.actions);
+  const mensagens = leads_whatsapp + leads_messenger;
 
   // ATENÇÃO: NÃO incluir roas, ctr, cpm, cpc, cpl, taxa_conversao — são GENERATED ALWAYS no banco
   return {
@@ -829,7 +864,10 @@ function convertInsightToMetrica(
     checkouts: 0,
     vendas,
     investimento,
-    faturamento: 0
+    faturamento: 0,
+    mensagens,
+    leads_whatsapp,
+    leads_messenger
   };
 }
 

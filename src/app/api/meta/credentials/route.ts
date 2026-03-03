@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { MetaClient } from '@/lib/meta-client';
-import { getOrCreateUsuario } from '@/lib/get-usuario';
+import { getOrCreateUsuario, resolveEmpresaId } from '@/lib/get-usuario';
 
 // GET - Listar todas as contas Meta conectadas
 export async function GET(request: NextRequest) {
@@ -26,6 +26,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Não foi possível identificar o usuário' }, { status: 404 });
     }
 
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ integrado: false, contas: [], integracao: null });
+
     // Buscar TODAS as integrações da empresa
     const { data: integracoes, error } = await supabase
       .from('integracoes_meta')
@@ -40,7 +43,7 @@ export async function GET(request: NextRequest) {
         intervalo_sincronizacao,
         created_at
       `)
-      .eq('empresa_id', usuario.empresa_id)
+      .eq('empresa_id', empresaId)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -90,6 +93,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Não foi possível identificar o usuário' }, { status: 404 });
     }
 
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ error: 'Selecione uma empresa' }, { status: 400 });
+
     const body = await request.json();
     const { accessToken, adAccountId, businessId } = body;
 
@@ -136,12 +142,12 @@ export async function POST(request: NextRequest) {
     const { data: existing } = await supabase
       .from('integracoes_meta')
       .select('id')
-      .eq('empresa_id', usuario.empresa_id)
+      .eq('empresa_id', empresaId)
       .eq('ad_account_id', formattedAccountId)
       .maybeSingle();
 
     const payload = {
-      empresa_id: usuario.empresa_id,
+      empresa_id: empresaId,
       access_token: accessToken,
       ad_account_id: formattedAccountId,
       business_id: businessId || null,
@@ -197,6 +203,9 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Não foi possível identificar o usuário' }, { status: 404 });
     }
 
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ error: 'Selecione uma empresa' }, { status: 400 });
+
     const { searchParams } = new URL(request.url);
     const integracaoId = searchParams.get('integracaoId');
 
@@ -206,7 +215,7 @@ export async function DELETE(request: NextRequest) {
         .from('integracoes_meta')
         .delete()
         .eq('id', integracaoId)
-        .eq('empresa_id', usuario.empresa_id);
+        .eq('empresa_id', empresaId);
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
@@ -221,7 +230,7 @@ export async function DELETE(request: NextRequest) {
       const { error } = await supabase
         .from('integracoes_meta')
         .delete()
-        .eq('empresa_id', usuario.empresa_id);
+        .eq('empresa_id', empresaId);
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
@@ -254,6 +263,9 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Não foi possível identificar o usuário' }, { status: 404 });
     }
 
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ error: 'Selecione uma empresa' }, { status: 400 });
+
     const body = await request.json();
     const { integracaoId, accessToken } = body;
 
@@ -269,7 +281,7 @@ export async function PUT(request: NextRequest) {
       .from('integracoes_meta')
       .select('ad_account_id')
       .eq('id', integracaoId)
-      .eq('empresa_id', usuario.empresa_id)
+      .eq('empresa_id', empresaId)
       .maybeSingle();
 
     if (!integracao) {
@@ -307,7 +319,7 @@ export async function PUT(request: NextRequest) {
         updated_at: new Date().toISOString()
       })
       .eq('id', integracaoId)
-      .eq('empresa_id', usuario.empresa_id);
+      .eq('empresa_id', empresaId);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

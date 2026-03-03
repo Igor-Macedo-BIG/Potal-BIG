@@ -2,7 +2,7 @@ import { DashboardTrafego } from '../../components/dashboard/DashboardTrafego';
 import { LayoutComFunis } from '@/components/layout/LayoutComFunis';
 
 export default function TrafegoPage() {
-  const empresa = 'Lídia Cabral Consultoria';
+  const empresa = 'Igor Macedo Tráfego';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-gray-900 to-black">

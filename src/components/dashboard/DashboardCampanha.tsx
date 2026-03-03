@@ -9,6 +9,7 @@ import { FunilConversao } from '@/components/dashboard/FunilConversao';
 import { TopCriativos } from '@/components/dashboard/TopCriativos';
 import { FiltrosCascata } from '@/components/dashboard/FiltrosCascata';
 import { supabase } from '@/lib/supabase';
+import { useEmpresa } from '@/contexts/EmpresaContext';
 import ModalEditarMetricas from '@/components/modals/ModalEditarMetricas';
 import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
@@ -298,9 +299,13 @@ interface FilterState {
 export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditButton = false, hideFinanceFields = false, department }: { defaultTitle?: string; showEditButton?: boolean; hideFinanceFields?: boolean; department?: string }) {
   const { campanhaAtiva, metricasCampanha, metricasGerais, loading, filtroData, atualizarFiltroData, recarregarMetricas, selecionarCampanha, limparSelecao, buscarMetricasPorFunil: buscarMetricasFunilCtx, buscarMetricasPorPublico: buscarMetricasPublicoCtx, buscarMetricasPorCriativo: buscarMetricasCriativoCtx } = useCampanhaContext();
   const { isClean } = useTheme();
+  const { empresaSelecionada } = useEmpresa();
   const [modalEditarAberto, setModalEditarAberto] = useState(false);
   const [reloadTrigger, setReloadTrigger] = useState(0);
   const [nomesModal, setNomesModal] = useState<{ titulo: string; nomes: string[] } | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   // Config de métricas do dashboard (renome, visibilidade, descrição)
   const [metricasConfigMap, setMetricasConfigMap] = useState<Map<string, any>>(new Map());
@@ -340,23 +345,23 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
     return cfg?.descricao || null;
   };
   
-  // Carregar filtros do localStorage
-  const [filtrosAtivos, setFiltrosAtivos] = useState<FilterState>(() => {
+  // Inicializar com valor padrão (sem localStorage) para evitar hydration mismatch
+  const [filtrosAtivos, setFiltrosAtivos] = useState<FilterState>({
+    funil: null,
+    campanha: null,
+    publico: null,
+    criativo: null,
+  });
+
+  // Hidratar do localStorage apenas no client
+  useEffect(() => {
     try {
-      if (typeof window !== 'undefined') {
-        const saved = localStorage.getItem('filtrosCampanhaAtivos');
-        if (saved) return JSON.parse(saved);
-      }
+      const saved = localStorage.getItem('filtrosCampanhaAtivos');
+      if (saved) setFiltrosAtivos(JSON.parse(saved));
     } catch (err) {
       console.error('Erro ao carregar filtros:', err);
     }
-    return {
-      funil: null,
-      campanha: null,
-      publico: null,
-      criativo: null,
-    };
-  });
+  }, []);
 
   // Salvar filtros no localStorage sempre que mudarem
   useEffect(() => {
@@ -562,12 +567,93 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
       department
     }, null, 2));
 
-    // Calcular custo por lead
+    // Calcular métricas derivadas de mensagens
+    const totalMensagens = metricasParaExibir ? (metricasParaExibir.leads_whatsapp + metricasParaExibir.leads_messenger) : 0;
     const custoPortLead = metricasParaExibir && metricasParaExibir.leads > 0 
       ? metricasParaExibir.investimento / metricasParaExibir.leads 
       : 0;
+    const custoPorMensagem = metricasParaExibir && totalMensagens > 0
+      ? metricasParaExibir.investimento / totalMensagens
+      : 0;
+    // Calcular dias no período para média diária
+    const diasNoPeriodo = (() => {
+      try {
+        const ini = new Date(filtroData.dataInicio);
+        const fim = new Date(filtroData.dataFim);
+        return Math.max(1, Math.round((fim.getTime() - ini.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+      } catch { return 1; }
+    })();
+    const mediaDiariaMensagens = totalMensagens > 0 ? totalMensagens / diasNoPeriodo : 0;
 
-    // Métricas financeiras (4 cards incluindo custo por lead)
+    // ── Métricas do período anterior (comparação) ──
+    const [metricasAnteriores, setMetricasAnteriores] = useState<any>(null);
+
+    useEffect(() => {
+      if (department !== 'trafego' || !empresaSelecionada) return;
+      const buscarMetricasAnteriores = async () => {
+        try {
+          const periodoAnt = calcularPeriodoAnterior();
+          const { data: campanhasEmpresa } = await supabase
+            .from('campanhas')
+            .select('id')
+            .eq('empresa_id', empresaSelecionada.id);
+          if (!campanhasEmpresa || campanhasEmpresa.length === 0) return;
+          const ids = campanhasEmpresa.map(c => c.id);
+          const { data: metricasAnt } = await supabase
+            .from('metricas')
+            .select('alcance, impressoes, cliques, visualizacoes_pagina, leads, leads_whatsapp, leads_messenger, mensagens, checkouts, vendas, investimento, faturamento')
+            .eq('tipo', 'campanha')
+            .in('referencia_id', ids)
+            .gte('periodo_inicio', periodoAnt.inicio)
+            .lte('periodo_fim', periodoAnt.fim);
+          if (metricasAnt && metricasAnt.length > 0) {
+            const toN = (v: any) => Number(v) || 0;
+            const agg = metricasAnt.reduce((acc, m) => ({
+              alcance: acc.alcance + toN(m.alcance),
+              impressoes: acc.impressoes + toN(m.impressoes),
+              cliques: acc.cliques + toN(m.cliques),
+              leads: acc.leads + toN(m.leads),
+              leads_whatsapp: acc.leads_whatsapp + toN(m.leads_whatsapp),
+              leads_messenger: acc.leads_messenger + toN(m.leads_messenger),
+              mensagens: acc.mensagens + toN(m.mensagens),
+              vendas: acc.vendas + toN(m.vendas),
+              investimento: acc.investimento + toN(m.investimento),
+              faturamento: acc.faturamento + toN(m.faturamento),
+            }), { alcance: 0, impressoes: 0, cliques: 0, leads: 0, leads_whatsapp: 0, leads_messenger: 0, mensagens: 0, vendas: 0, investimento: 0, faturamento: 0 });
+            agg.mensagens = agg.leads_whatsapp + agg.leads_messenger;
+            setMetricasAnteriores(agg);
+          } else {
+            setMetricasAnteriores(null);
+          }
+        } catch (err) {
+          console.error('Erro ao buscar métricas anteriores tráfego:', err);
+        }
+      };
+      buscarMetricasAnteriores();
+    }, [department, filtroData.dataInicio, filtroData.dataFim, empresaSelecionada?.id, reloadTrigger]);
+
+    // Helpers de comparação (reusados do SDR/Closer pattern)
+    const diffPct = (current: number, prev: number) => {
+      if (prev === 0) return current === 0 ? 0 : 100;
+      return Math.round(((current - prev) / prev) * 100);
+    };
+    const trendFromDiff = (current: number, prev: number): 'up' | 'down' | 'stable' => {
+      if (!metricasAnteriores) return current > 0 ? 'up' : 'stable';
+      const d = diffPct(current, prev);
+      return d > 0 ? 'up' : d < 0 ? 'down' : 'stable';
+    };
+    const descComp = (current: number, prev: number) => {
+      if (!metricasAnteriores) return '';
+      const pct = diffPct(current, prev);
+      return `${pct >= 0 ? '↑' : '↓'} ${pct >= 0 ? '+' : ''}${pct}% vs anterior`;
+    };
+    // Para métricas de custo (menor = melhor), inverte o trend
+    const trendCusto = (current: number, prev: number): 'up' | 'down' | 'stable' => {
+      if (!metricasAnteriores || prev === 0) return current > 0 ? 'stable' : 'stable';
+      return current < prev ? 'up' : current > prev ? 'down' : 'stable';
+    };
+
+    // Métricas financeiras
     // Se for dashboard SDR, buscar dados do Supabase
     const [sdrDetail, setSdrDetail] = useState<any>(null);
     const [sdrDetailPrev, setSdrDetailPrev] = useState<any>(null);
@@ -1153,7 +1239,7 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
     })() : department === 'social-seller' ? (() => {
       const getSocialSellerDetailFromStorage = () => {
         try {
-          if (typeof window === 'undefined') return null;
+          if (!mounted) return null;
           if (!campanhaAtiva) return null;
           const key = `metricas_social_seller_${campanhaAtiva.id}_${filtroData.dataInicio}`;
           const raw = localStorage.getItem(key);
@@ -1168,7 +1254,7 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
       const socialSellerDetail = getSocialSellerDetailFromStorage();
       const socialSellerDetailPrev = (() => {
         try {
-          if (typeof window === 'undefined') return null;
+          if (!mounted) return null;
           if (!campanhaAtiva) return null;
           const key = `metricas_social_seller_${campanhaAtiva.id}_${periodoAnterior.inicio}`;
           const raw = localStorage.getItem(key);
@@ -1245,7 +1331,7 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
     })() : department === 'cs' ? (() => {
       const getCsDetailFromStorage = () => {
         try {
-          if (typeof window === 'undefined') return null;
+          if (!mounted) return null;
           if (!campanhaAtiva) return null;
           const key = `metricas_cs_${campanhaAtiva.id}_${filtroData.dataInicio}`;
           const raw = localStorage.getItem(key);
@@ -1260,7 +1346,7 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
       const csDetail = getCsDetailFromStorage();
       const csDetailPrev = (() => {
         try {
-          if (typeof window === 'undefined') return null;
+          if (!mounted) return null;
           if (!campanhaAtiva) return null;
           const key = `metricas_cs_${campanhaAtiva.id}_${periodoAnterior.inicio}`;
           const raw = localStorage.getItem(key);
@@ -1334,44 +1420,103 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
           description: 'Vendas adicionais realizadas'
         }
       ];
-    })() : metricasParaExibir ? [
+    })() : metricasParaExibir ? (() => {
+      // Dados anteriores para comparação
+      const prev = metricasAnteriores || {};
+      const prevInvest = prev.investimento || 0;
+      const prevFat = prev.faturamento || 0;
+      const prevLeads = prev.leads || 0;
+      const prevLw = prev.leads_whatsapp || 0;
+      const prevLm = prev.leads_messenger || 0;
+      const prevMsg = prevLw + prevLm;
+      const prevRoas = prevInvest > 0 ? prevFat / prevInvest : 0;
+      const prevCpl = prevLeads > 0 ? prevInvest / prevLeads : 0;
+      const prevCpm = prevMsg > 0 ? prevInvest / prevMsg : 0;
+
+      return [
       {
         title: 'Investimento',
         value: metricasParaExibir.investimento > 0 ? `R$ ${metricasParaExibir.investimento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'Não informado',
-        trend: 'up' as const,
+        trend: trendFromDiff(metricasParaExibir.investimento, prevInvest),
         icon: <Target className="h-5 w-5" />,
-        percentage: 85,
+        percentage: metricasAnteriores ? Math.abs(diffPct(metricasParaExibir.investimento, prevInvest)) : 85,
         gradient: 'from-blue-500/20 to-cyan-500/20',
-        description: campanhaAtiva ? 'Total investido' : 'Total de todas as campanhas'
+        description: metricasAnteriores ? descComp(metricasParaExibir.investimento, prevInvest) : (campanhaAtiva ? 'Total investido' : 'Total de todas as campanhas')
       },
       {
         title: 'Faturamento',
         value: metricasParaExibir.faturamento > 0 ? `R$ ${metricasParaExibir.faturamento.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'Não informado',
-        trend: metricasParaExibir.faturamento >= metricasParaExibir.investimento ? 'up' as const : 'down' as const,
+        trend: trendFromDiff(metricasParaExibir.faturamento, prevFat),
         icon: <Rocket className="h-5 w-5" />,
-        percentage: Math.min((metricasParaExibir.faturamento / Math.max(metricasParaExibir.investimento, 1)) * 50, 100),
+        percentage: metricasAnteriores ? Math.abs(diffPct(metricasParaExibir.faturamento, prevFat)) : Math.min((metricasParaExibir.faturamento / Math.max(metricasParaExibir.investimento, 1)) * 50, 100),
         gradient: 'from-emerald-500/20 to-teal-500/20',
-        description: campanhaAtiva ? 'Receita total' : 'Receita de todas as campanhas'
+        description: metricasAnteriores ? descComp(metricasParaExibir.faturamento, prevFat) : (campanhaAtiva ? 'Receita total' : 'Receita de todas as campanhas')
       },
       {
         title: 'ROAS',
         value: metricasParaExibir.roas > 0 ? `${metricasParaExibir.roas.toFixed(2)}x` : 'Não informado',
-        trend: metricasParaExibir.roas >= 2 ? 'up' as const : metricasParaExibir.roas > 0 ? 'stable' as const : 'down' as const,
+        trend: trendFromDiff(metricasParaExibir.roas, prevRoas),
         icon: <TrendingUp className="h-5 w-5" />,
-        percentage: Math.min(metricasParaExibir.roas * 30, 100),
+        percentage: metricasAnteriores ? Math.abs(diffPct(metricasParaExibir.roas, prevRoas)) : Math.min(metricasParaExibir.roas * 30, 100),
         gradient: 'from-purple-500/20 to-pink-500/20',
-        description: metricasParaExibir.roas >= 2 ? 'Excelente retorno' : metricasParaExibir.roas > 0 ? 'Retorno moderado' : 'Sem dados'
+        description: metricasAnteriores ? descComp(metricasParaExibir.roas, prevRoas) : (metricasParaExibir.roas >= 2 ? 'Excelente retorno' : metricasParaExibir.roas > 0 ? 'Retorno moderado' : 'Sem dados')
+      },
+      {
+        title: 'Leads de Páginas',
+        value: metricasParaExibir.leads > 0 ? metricasParaExibir.leads.toLocaleString('pt-BR') : 'Não informado',
+        trend: trendFromDiff(metricasParaExibir.leads, prevLeads),
+        icon: <Users className="h-5 w-5" />,
+        percentage: metricasAnteriores ? Math.abs(diffPct(metricasParaExibir.leads, prevLeads)) : Math.min(metricasParaExibir.leads / 10, 100),
+        gradient: 'from-cyan-500/20 to-blue-500/20',
+        description: metricasAnteriores ? descComp(metricasParaExibir.leads, prevLeads) : 'Formulários e landing pages'
+      },
+      {
+        title: 'Leads WhatsApp',
+        value: metricasParaExibir.leads_whatsapp > 0 ? metricasParaExibir.leads_whatsapp.toLocaleString('pt-BR') : 'Não informado',
+        trend: trendFromDiff(metricasParaExibir.leads_whatsapp, prevLw),
+        icon: <MessageCircle className="h-5 w-5" />,
+        percentage: metricasAnteriores ? Math.abs(diffPct(metricasParaExibir.leads_whatsapp, prevLw)) : Math.min(metricasParaExibir.leads_whatsapp / 10, 100),
+        gradient: 'from-green-500/20 to-emerald-500/20',
+        description: metricasAnteriores ? descComp(metricasParaExibir.leads_whatsapp, prevLw) : 'Conversas iniciadas via WhatsApp'
+      },
+      {
+        title: 'Leads Messenger/Instagram',
+        value: metricasParaExibir.leads_messenger > 0 ? metricasParaExibir.leads_messenger.toLocaleString('pt-BR') : 'Não informado',
+        trend: trendFromDiff(metricasParaExibir.leads_messenger, prevLm),
+        icon: <Megaphone className="h-5 w-5" />,
+        percentage: metricasAnteriores ? Math.abs(diffPct(metricasParaExibir.leads_messenger, prevLm)) : Math.min(metricasParaExibir.leads_messenger / 10, 100),
+        gradient: 'from-violet-500/20 to-purple-500/20',
+        description: metricasAnteriores ? descComp(metricasParaExibir.leads_messenger, prevLm) : 'Messenger e Instagram Direct'
       },
       {
         title: 'Custo por Lead',
         value: custoPortLead > 0 ? `R$ ${custoPortLead.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'Não informado',
-        trend: custoPortLead <= 50 ? 'up' as const : custoPortLead <= 100 ? 'stable' as const : 'down' as const,
+        trend: trendCusto(custoPortLead, prevCpl),
         icon: <UserCheck className="h-5 w-5" />,
-        percentage: custoPortLead > 0 ? Math.max(100 - custoPortLead, 10) : 0,
+        percentage: metricasAnteriores ? Math.abs(diffPct(custoPortLead, prevCpl)) : (custoPortLead > 0 ? Math.max(100 - custoPortLead, 10) : 0),
         gradient: 'from-orange-500/20 to-amber-500/20',
-        description: custoPortLead <= 50 ? 'Custo otimizado' : custoPortLead <= 100 ? 'Custo moderado' : 'Custo elevado'
+        description: metricasAnteriores ? descComp(custoPortLead, prevCpl) : (custoPortLead <= 50 ? 'Custo otimizado' : custoPortLead <= 100 ? 'Custo moderado' : 'Custo elevado')
+      },
+      {
+        title: 'Custo por Mensagem',
+        value: custoPorMensagem > 0 ? `R$ ${custoPorMensagem.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'Não informado',
+        trend: trendCusto(custoPorMensagem, prevCpm),
+        icon: <DollarSign className="h-5 w-5" />,
+        percentage: metricasAnteriores ? Math.abs(diffPct(custoPorMensagem, prevCpm)) : (custoPorMensagem > 0 ? Math.max(100 - custoPorMensagem, 10) : 0),
+        gradient: 'from-rose-500/20 to-pink-500/20',
+        description: metricasAnteriores ? descComp(custoPorMensagem, prevCpm) : 'Investimento / total de conversas'
+      },
+      {
+        title: 'Média Diária de Mensagens',
+        value: mediaDiariaMensagens > 0 ? mediaDiariaMensagens.toFixed(1) : 'Não informado',
+        trend: trendFromDiff(mediaDiariaMensagens, prevMsg > 0 ? prevMsg / diasNoPeriodo : 0),
+        icon: <BarChart3 className="h-5 w-5" />,
+        percentage: Math.min(mediaDiariaMensagens * 5, 100),
+        gradient: 'from-indigo-500/20 to-blue-500/20',
+        description: metricasAnteriores ? descComp(mediaDiariaMensagens, prevMsg > 0 ? prevMsg / diasNoPeriodo : 0) : `Média por dia (${diasNoPeriodo} dias)`
       }
-    ] : [
+    ];
+    })() : [
       {
         title: 'Investimento',
         value: 'Não informado',
@@ -1400,12 +1545,57 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
         description: 'Selecione uma campanha'
       },
       {
+        title: 'Leads de Páginas',
+        value: 'Não informado',
+        trend: 'stable' as const,
+        icon: <Users className="h-5 w-5" />,
+        percentage: 0,
+        gradient: 'from-cyan-500/20 to-blue-500/20',
+        description: 'Selecione uma campanha'
+      },
+      {
+        title: 'Leads WhatsApp',
+        value: 'Não informado',
+        trend: 'stable' as const,
+        icon: <MessageCircle className="h-5 w-5" />,
+        percentage: 0,
+        gradient: 'from-green-500/20 to-emerald-500/20',
+        description: 'Selecione uma campanha'
+      },
+      {
+        title: 'Leads Messenger/Instagram',
+        value: 'Não informado',
+        trend: 'stable' as const,
+        icon: <Megaphone className="h-5 w-5" />,
+        percentage: 0,
+        gradient: 'from-violet-500/20 to-purple-500/20',
+        description: 'Selecione uma campanha'
+      },
+      {
         title: 'Custo por Lead',
         value: 'Não informado',
         trend: 'stable' as const,
         icon: <UserCheck className="h-5 w-5" />,
         percentage: 0,
         gradient: 'from-orange-500/20 to-amber-500/20',
+        description: 'Selecione uma campanha'
+      },
+      {
+        title: 'Custo por Mensagem',
+        value: 'Não informado',
+        trend: 'stable' as const,
+        icon: <DollarSign className="h-5 w-5" />,
+        percentage: 0,
+        gradient: 'from-rose-500/20 to-pink-500/20',
+        description: 'Selecione uma campanha'
+      },
+      {
+        title: 'Média Diária de Mensagens',
+        value: 'Não informado',
+        trend: 'stable' as const,
+        icon: <BarChart3 className="h-5 w-5" />,
+        percentage: 0,
+        gradient: 'from-indigo-500/20 to-blue-500/20',
         description: 'Selecione uma campanha'
       }
     ];  // Dados da campanha para a tabela

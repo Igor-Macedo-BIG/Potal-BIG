@@ -108,8 +108,15 @@ interface FunilDisponivel {
 // Componente Principal
 // ============================================
 
-export function MetaIntegrationCard() {
+export function MetaIntegrationCard({ empresaId }: { empresaId?: string }) {
   const { isClean } = useTheme();
+
+  // Helper para adicionar empresa_id nas URLs
+  const buildUrl = useCallback((path: string) => {
+    if (!empresaId) return path;
+    const sep = path.includes('?') ? '&' : '?';
+    return `${path}${sep}empresa_id=${empresaId}`;
+  }, [empresaId]);
 
   // Estado
   const [loading, setLoading] = useState(true);
@@ -143,17 +150,13 @@ export function MetaIntegrationCard() {
   const [funilPadrao, setFunilPadrao] = useState<string>('none');
 
   // Carregar dados
-  useEffect(() => {
-    carregarDados();
-  }, []);
-
   const carregarDados = useCallback(async () => {
     setLoading(true);
     try {
       const [statusRes, logsRes, campanhasRes] = await Promise.all([
-        fetch('/api/meta/credentials'),
-        fetch('/api/meta/sync?limit=10'),
-        fetch('/api/meta/campaigns')
+        fetch(buildUrl('/api/meta/credentials')),
+        fetch(buildUrl('/api/meta/sync?limit=10')),
+        fetch(buildUrl('/api/meta/campaigns'))
       ]);
 
       if (statusRes.ok) {
@@ -177,7 +180,11 @@ export function MetaIntegrationCard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [buildUrl]);
+
+  useEffect(() => {
+    carregarDados();
+  }, [carregarDados]);
 
   // Salvar credenciais
   async function salvarCredenciais() {
@@ -188,7 +195,7 @@ export function MetaIntegrationCard() {
 
     setSaving(true);
     try {
-      const res = await fetch('/api/meta/credentials', {
+      const res = await fetch(buildUrl('/api/meta/credentials'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -227,7 +234,7 @@ export function MetaIntegrationCard() {
 
     setUpdatingToken(true);
     try {
-      const res = await fetch('/api/meta/credentials', {
+      const res = await fetch(buildUrl('/api/meta/credentials'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -262,7 +269,7 @@ export function MetaIntegrationCard() {
 
     setRemovingId(contaId);
     try {
-      const res = await fetch(`/api/meta/credentials?integracaoId=${contaId}`, { method: 'DELETE' });
+      const res = await fetch(buildUrl(`/api/meta/credentials?integracaoId=${contaId}`), { method: 'DELETE' });
       const data = await res.json();
 
       if (!res.ok) {
@@ -293,7 +300,7 @@ export function MetaIntegrationCard() {
         periodoInicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().split('T')[0];
       }
 
-      const res = await fetch('/api/meta/sync', {
+      const res = await fetch(buildUrl('/api/meta/sync'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -315,23 +322,40 @@ export function MetaIntegrationCard() {
         if (r) {
           setLastSyncResult(r);
         }
+        const criadas = r?.campanhas?.criadas || 0;
+        const atualizadas = r?.campanhas?.atualizadas || 0;
+        const processadas = r?.campanhas?.processadas || 0;
         const resumo = r
-          ? `${r.campanhas?.processadas || 0} campanhas · ${r.conjuntos?.processados || 0} conjuntos · ${r.anuncios?.processados || 0} anúncios · ${r.metricas?.inseridas || 0} métricas`
+          ? `${criadas} novas · ${atualizadas} atualizadas · ${r.metricas?.inseridas || 0} métricas`
           : '';
         toast.success(`Sincronização concluída em ${r?.duracao || '?'}! ${resumo}`, { duration: 8000 });
 
-        if (data.erros && data.erros.length > 0) {
-          const erroMigration = (data.erros as string[]).find(
-            (e: string) => e.includes('meta_id') || e.includes('migration') || e.includes('⚠️')
+        // Alerta crítico: campanhas encontradas na Meta mas nenhuma salva no banco
+        if (processadas > 0 && criadas === 0 && atualizadas === 0) {
+          toast.error(
+            `⚠️ ${processadas} campanhas encontradas na Meta, mas NENHUMA foi salva no banco! ` +
+            `Verifique se o script FIX-campanhas-funil-nullable.sql foi executado no Supabase.`,
+            { duration: 15000 }
           );
-          if (erroMigration) {
-            toast.error(erroMigration, { duration: 10000 });
+        }
+
+        if (data.erros && data.erros.length > 0) {
+          // Mostrar TODOS os erros importantes
+          const erros = data.erros as string[];
+          const errosGraves = erros.filter(
+            (e: string) => e.includes('Erro') || e.includes('not-null') || e.includes('violates') || e.includes('constraint')
+          );
+          if (errosGraves.length > 0) {
+            toast.error(`${errosGraves.length} erro(s): ${errosGraves[0]}`, { duration: 12000 });
           } else {
-            toast.warning(`${data.erros.length} avisos durante sincronização`);
+            toast.warning(`${erros.length} aviso(s): ${erros[0]}`, { duration: 8000 });
           }
+          console.error('[Meta Sync] Todos os erros/avisos:', erros);
         }
       } else {
-        toast.error('Sincronização completada com erros');
+        const errosMsg = data.erros?.length ? `: ${data.erros[0]}` : '';
+        toast.error(`Sincronização falhou${errosMsg}`, { duration: 10000 });
+        console.error('[Meta Sync] Falha:', data.erros);
       }
 
       carregarDados();
@@ -345,7 +369,7 @@ export function MetaIntegrationCard() {
   // Vincular uma campanha a um funil
   async function vincularCampanha(campanhaId: string, funilId: string) {
     try {
-      const res = await fetch('/api/meta/campaigns', {
+      const res = await fetch(buildUrl('/api/meta/campaigns'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ campanhaId, funilId })
@@ -374,7 +398,7 @@ export function MetaIntegrationCard() {
 
     setBulkLinking(true);
     try {
-      const res = await fetch('/api/meta/campaigns', {
+      const res = await fetch(buildUrl('/api/meta/campaigns'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ funilId: funilBulk, vincularTodas: true })
@@ -612,20 +636,9 @@ export function MetaIntegrationCard() {
               </div>
             )}
 
-            {/* Botão para adicionar nova conta */}
-            {!showAddForm && (
-              <Button
-                variant="outline"
-                className={isClean ? 'w-full border-dashed border-gray-200 text-gray-500 hover:text-gray-900 hover:border-amber-500' : 'w-full border-dashed border-gray-600 text-gray-400 hover:text-white hover:border-purple-500'}
-                onClick={() => setShowAddForm(true)}
-              >
-                + Adicionar Conta Meta Ads
-              </Button>
-            )}
-
-            {/* Formulário de credenciais */}
-            {(showAddForm || contas.length === 0) && (
-              <div className={isClean ? 'bg-gray-50 rounded-lg p-4 border border-gray-200' : 'bg-gray-900/50 rounded-lg p-4 border border-gray-700'}>
+            {/* Formulário ou botão de adicionar */}
+            {showAddForm || contas.length === 0 ? (
+              <div key="add-form" className={isClean ? 'bg-gray-50 rounded-lg p-4 border border-gray-200' : 'bg-gray-900/50 rounded-lg p-4 border border-gray-700'}>
                 <div className="flex items-center justify-between mb-4">
                   <h4 className={`font-medium ${isClean ? 'text-gray-900' : 'text-white'}`}>
                     Conectar Nova Conta
@@ -708,6 +721,15 @@ export function MetaIntegrationCard() {
                 </Button>
               </div>
             </div>
+            ) : (
+              <Button
+                key="add-button"
+                variant="outline"
+                className={isClean ? 'w-full border-dashed border-gray-200 text-gray-500 hover:text-gray-900 hover:border-amber-500' : 'w-full border-dashed border-gray-600 text-gray-400 hover:text-white hover:border-purple-500'}
+                onClick={() => setShowAddForm(true)}
+              >
+                + Adicionar Conta Meta Ads
+              </Button>
             )}
           </TabsContent>
 
@@ -813,62 +835,78 @@ export function MetaIntegrationCard() {
                     className={isClean ? 'w-full mt-4 bg-amber-600 hover:bg-amber-700 text-white' : 'w-full mt-4 bg-purple-600 hover:bg-purple-700'}
                   >
                     {syncing ? (
-                      <>
+                      <span className="flex items-center justify-center">
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                         Sincronizando...
-                      </>
+                      </span>
                     ) : (
-                      <>
+                      <span className="flex items-center justify-center">
                         <RefreshCw className="h-4 w-4 mr-2" />
                         Sincronizar Agora
-                      </>
+                      </span>
                     )}
                   </Button>
                 </div>
 
                 {/* Resultado da última sincronização */}
-                {lastSyncResult && (
-                  <div className={isClean ? 'bg-green-50 rounded-lg p-4 border border-green-200' : 'bg-green-900/20 rounded-lg p-4 border border-green-700/50'}>
-                    <h4 className={isClean ? 'text-green-700 font-medium mb-3 flex items-center gap-2' : 'text-green-300 font-medium mb-3 flex items-center gap-2'}>
-                      <CheckCircle2 className="h-4 w-4" />
-                      Última Sincronização — {lastSyncResult.duracao}
-                    </h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div className={isClean ? 'bg-gray-50 rounded-lg p-3 text-center border border-gray-200' : 'bg-gray-800/50 rounded-lg p-3 text-center'}>
-                        <Target className="h-4 w-4 text-blue-400 mx-auto mb-1" />
-                        <p className={`font-bold text-lg ${isClean ? 'text-gray-900' : 'text-white'}`}>{lastSyncResult.campanhas.processadas}</p>
-                        <p className={isClean ? 'text-gray-500 text-xs' : 'text-gray-400 text-xs'}>Campanhas</p>
-                        <p className="text-green-400 text-[10px]">
-                          {lastSyncResult.campanhas.criadas} novas · {lastSyncResult.campanhas.atualizadas} atualizadas
-                        </p>
-                      </div>
-                      <div className={isClean ? 'bg-gray-50 rounded-lg p-3 text-center border border-gray-200' : 'bg-gray-800/50 rounded-lg p-3 text-center'}>
-                        <Layers className={isClean ? 'h-4 w-4 text-amber-600 mx-auto mb-1' : 'h-4 w-4 text-purple-400 mx-auto mb-1'} />
-                        <p className={`font-bold text-lg ${isClean ? 'text-gray-900' : 'text-white'}`}>{lastSyncResult.conjuntos.processados}</p>
-                        <p className={isClean ? 'text-gray-500 text-xs' : 'text-gray-400 text-xs'}>Conjuntos</p>
-                        <p className="text-green-400 text-[10px]">
-                          {lastSyncResult.conjuntos.criados} novos · {lastSyncResult.conjuntos.atualizados} atualizados
-                        </p>
-                      </div>
-                      <div className={isClean ? 'bg-gray-50 rounded-lg p-3 text-center border border-gray-200' : 'bg-gray-800/50 rounded-lg p-3 text-center'}>
-                        <BarChart3 className="h-4 w-4 text-orange-400 mx-auto mb-1" />
-                        <p className={`font-bold text-lg ${isClean ? 'text-gray-900' : 'text-white'}`}>{lastSyncResult.anuncios.processados}</p>
-                        <p className={isClean ? 'text-gray-500 text-xs' : 'text-gray-400 text-xs'}>Anúncios</p>
-                        <p className="text-green-400 text-[10px]">
-                          {lastSyncResult.anuncios.criados} novos · {lastSyncResult.anuncios.atualizados} atualizados
-                        </p>
-                      </div>
-                      <div className={isClean ? 'bg-gray-50 rounded-lg p-3 text-center border border-gray-200' : 'bg-gray-800/50 rounded-lg p-3 text-center'}>
-                        <Activity className={isClean ? 'h-4 w-4 text-amber-600 mx-auto mb-1' : 'h-4 w-4 text-cyan-400 mx-auto mb-1'} />
-                        <p className={`font-bold text-lg ${isClean ? 'text-gray-900' : 'text-white'}`}>{lastSyncResult.metricas.inseridas}</p>
-                        <p className={isClean ? 'text-gray-500 text-xs' : 'text-gray-400 text-xs'}>Métricas</p>
-                        <p className="text-green-400 text-[10px]">
-                          {lastSyncResult.metricas.processadas} processadas
-                        </p>
+                <div key="sync-result-container" className="mt-4">
+                  {lastSyncResult && (
+                    <div className={
+                      (lastSyncResult.campanhas.processadas > 0 && lastSyncResult.campanhas.criadas === 0 && lastSyncResult.campanhas.atualizadas === 0)
+                        ? (isClean ? 'bg-red-50 rounded-lg p-4 border border-red-300' : 'bg-red-900/20 rounded-lg p-4 border border-red-700/50')
+                        : (isClean ? 'bg-green-50 rounded-lg p-4 border border-green-200' : 'bg-green-900/20 rounded-lg p-4 border border-green-700/50')
+                    }>
+                      {lastSyncResult.campanhas.processadas > 0 && lastSyncResult.campanhas.criadas === 0 && lastSyncResult.campanhas.atualizadas === 0 && (
+                        <div className={isClean ? 'bg-red-100 rounded-lg p-3 mb-3 border border-red-300' : 'bg-red-900/40 rounded-lg p-3 mb-3 border border-red-600'}>
+                          <p className={isClean ? 'text-red-700 text-sm font-semibold' : 'text-red-300 text-sm font-semibold'}>
+                            ⚠️ Campanhas não foram salvas no banco de dados!
+                          </p>
+                          <p className={isClean ? 'text-red-600 text-xs mt-1' : 'text-red-400 text-xs mt-1'}>
+                            Execute o script <strong>FIX-campanhas-funil-nullable.sql</strong> no Supabase SQL Editor e sincronize novamente.
+                          </p>
+                        </div>
+                      )}
+                      <h4 className={isClean ? 'text-green-700 font-medium mb-3 flex items-center gap-2' : 'text-green-300 font-medium mb-3 flex items-center gap-2'}>
+                        <CheckCircle2 className="h-4 w-4" />
+                        Última Sincronização — {lastSyncResult.duracao}
+                      </h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className={isClean ? 'bg-gray-50 rounded-lg p-3 text-center border border-gray-200' : 'bg-gray-800/50 rounded-lg p-3 text-center'}>
+                          <Target className="h-4 w-4 text-blue-400 mx-auto mb-1" />
+                          <p className={`font-bold text-lg ${isClean ? 'text-gray-900' : 'text-white'}`}>{lastSyncResult.campanhas.processadas}</p>
+                          <p className={isClean ? 'text-gray-500 text-xs' : 'text-gray-400 text-xs'}>Campanhas</p>
+                          <p className="text-green-400 text-[10px]">
+                            {lastSyncResult.campanhas.criadas} novas · {lastSyncResult.campanhas.atualizadas} atualizadas
+                          </p>
+                        </div>
+                        <div className={isClean ? 'bg-gray-50 rounded-lg p-3 text-center border border-gray-200' : 'bg-gray-800/50 rounded-lg p-3 text-center'}>
+                          <Layers className={isClean ? 'h-4 w-4 text-amber-600 mx-auto mb-1' : 'h-4 w-4 text-purple-400 mx-auto mb-1'} />
+                          <p className={`font-bold text-lg ${isClean ? 'text-gray-900' : 'text-white'}`}>{lastSyncResult.conjuntos.processados}</p>
+                          <p className={isClean ? 'text-gray-500 text-xs' : 'text-gray-400 text-xs'}>Conjuntos</p>
+                          <p className="text-green-400 text-[10px]">
+                            {lastSyncResult.conjuntos.criados} novos · {lastSyncResult.conjuntos.atualizados} atualizados
+                          </p>
+                        </div>
+                        <div className={isClean ? 'bg-gray-50 rounded-lg p-3 text-center border border-gray-200' : 'bg-gray-800/50 rounded-lg p-3 text-center'}>
+                          <BarChart3 className="h-4 w-4 text-orange-400 mx-auto mb-1" />
+                          <p className={`font-bold text-lg ${isClean ? 'text-gray-900' : 'text-white'}`}>{lastSyncResult.anuncios.processados}</p>
+                          <p className={isClean ? 'text-gray-500 text-xs' : 'text-gray-400 text-xs'}>Anúncios</p>
+                          <p className="text-green-400 text-[10px]">
+                            {lastSyncResult.anuncios.criados} novos · {lastSyncResult.anuncios.atualizados} atualizados
+                          </p>
+                        </div>
+                        <div className={isClean ? 'bg-gray-50 rounded-lg p-3 text-center border border-gray-200' : 'bg-gray-800/50 rounded-lg p-3 text-center'}>
+                          <Activity className={isClean ? 'h-4 w-4 text-amber-600 mx-auto mb-1' : 'h-4 w-4 text-cyan-400 mx-auto mb-1'} />
+                          <p className={`font-bold text-lg ${isClean ? 'text-gray-900' : 'text-white'}`}>{lastSyncResult.metricas.inseridas}</p>
+                          <p className={isClean ? 'text-gray-500 text-xs' : 'text-gray-400 text-xs'}>Métricas</p>
+                          <p className="text-green-400 text-[10px]">
+                            {lastSyncResult.metricas.processadas} processadas
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
                 {/* Histórico de sincronizações */}
                 <div className={isClean ? 'bg-gray-50 rounded-lg p-4 border border-gray-200' : 'bg-gray-900/50 rounded-lg p-4 border border-gray-700'}>
@@ -1052,14 +1090,15 @@ export function MetaIntegrationCard() {
             ) : (
               <>
                 {/* BULK ASSIGN: campanhas sem funil */}
-                {campanhasNaoVinculadas.length > 0 && (
-                  <div className={isClean ? 'bg-amber-50 rounded-lg p-4 border border-amber-200' : 'bg-orange-900/20 rounded-lg p-4 border border-orange-700/60'}>
-                    <h4 className={isClean ? 'text-amber-700 font-semibold mb-1 flex items-center gap-2' : 'text-orange-300 font-semibold mb-1 flex items-center gap-2'}>
-                      <AlertCircle className="h-5 w-5" />
-                      {campanhasNaoVinculadas.length} campanha(s) sem funil — dados não aparecem no dashboard!
-                    </h4>
-                    <p className={isClean ? 'text-gray-500 text-sm mb-4' : 'text-gray-400 text-sm mb-4'}>
-                      Vincule ao funil para que as métricas apareçam no painel de resultados.
+                <div key="bulk-assign-container">
+                  {campanhasNaoVinculadas.length > 0 ? (
+                    <div className={isClean ? 'bg-amber-50 rounded-lg p-4 border border-amber-200' : 'bg-orange-900/20 rounded-lg p-4 border border-orange-700/60'}>
+                      <h4 className={isClean ? 'text-amber-700 font-semibold mb-1 flex items-center gap-2' : 'text-orange-300 font-semibold mb-1 flex items-center gap-2'}>
+                        <AlertCircle className="h-5 w-5" />
+                        {campanhasNaoVinculadas.length} campanha(s) sem funil — dados não aparecem no dashboard!
+                      </h4>
+                      <p className={isClean ? 'text-gray-500 text-sm mb-4' : 'text-gray-400 text-sm mb-4'}>
+                        Vincule ao funil para que as métricas apareçam no painel de resultados.
                     </p>
 
                     {/* Bulk assign */}
@@ -1085,9 +1124,11 @@ export function MetaIntegrationCard() {
                           className={isClean ? 'bg-amber-600 hover:bg-amber-700 text-white whitespace-nowrap' : 'bg-orange-600 hover:bg-orange-700 text-white whitespace-nowrap'}
                         >
                           {bulkLinking ? (
-                            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Vinculando...</>
+                            <span className="flex items-center justify-center">
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />Vinculando...
+                            </span>
                           ) : (
-                            <>Vincular todas ({campanhasNaoVinculadas.length})</>
+                            <span className="flex items-center justify-center">Vincular todas ({campanhasNaoVinculadas.length})</span>
                           )}
                         </Button>
                       </div>
@@ -1132,7 +1173,8 @@ export function MetaIntegrationCard() {
                       </div>
                     </details>
                   </div>
-                )}
+                  ) : null}
+                </div>
 
                 {/* Campanhas vinculadas */}
                 <div className={isClean ? 'bg-gray-50 rounded-lg p-4 border border-gray-200' : 'bg-gray-900/50 rounded-lg p-4 border border-gray-700'}>

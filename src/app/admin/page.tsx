@@ -6,6 +6,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MetaIntegrationCard } from '@/components/admin/MetaIntegrationCard';
 import { TypebotIntegrationCard } from '@/components/admin/TypebotIntegrationCard';
 import { KommoIntegrationCard } from '@/components/admin/KommoIntegrationCard';
+import { RelatorioConfigCard } from '@/components/admin/RelatorioConfigCard';
+import { FeedbackPerformanceCard } from '@/components/admin/FeedbackPerformanceCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,9 +28,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useEmpresa } from '@/contexts/EmpresaContext';
 import { 
   Users, 
-  Target, 
   Layers, 
   Plus, 
   Settings, 
@@ -36,32 +38,18 @@ import {
   Search,
   Edit,
   Trash2,
-  Eye,
-  EyeOff,
-  Phone,
-  Handshake,
-  Share2,
-  HeadphonesIcon,
-  Megaphone,
   ChevronDown,
   ChevronRight,
   Sparkles,
   Palette,
-  Copy
+  Copy,
+  Target,
+  RefreshCw,
+  Loader2,
+  ExternalLink
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
-
-type UserRole = 'admin' | 'gestor' | 'sdr' | 'closer' | 'social-seller' | 'cs' | 'trafego';
-
-interface Usuario {
-  id: string;
-  nome: string;
-  email: string;
-  role: UserRole;
-  ativo: boolean;
-  created_at: string;
-}
 
 interface Funil {
   id: string;
@@ -98,51 +86,10 @@ interface Anuncio {
   conjunto_anuncio_id: string;
 }
 
-const roleLabels: Record<UserRole, string> = {
-  admin: 'Administrador',
-  gestor: 'Gestor de Marketing',
-  sdr: 'SDR',
-  closer: 'Closer',
-  'social-seller': 'Social Seller',
-  cs: 'Customer Success',
-  trafego: 'Tráfego'
-};
-
-const roleIcons: Record<UserRole, any> = {
-  admin: Shield,
-  gestor: Target,
-  sdr: Phone,
-  closer: Handshake,
-  'social-seller': Share2,
-  cs: HeadphonesIcon,
-  trafego: Megaphone
-};
-
-const roleColorsDark: Record<UserRole, string> = {
-  admin: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-  gestor: 'bg-blue-600/20 text-blue-300 border-blue-600/30',
-  sdr: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  closer: 'bg-green-500/20 text-green-300 border-green-500/30',
-  'social-seller': 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
-  cs: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
-  trafego: 'bg-pink-500/20 text-pink-300 border-pink-500/30'
-};
-
-const roleColorsClean: Record<UserRole, string> = {
-  admin: 'bg-purple-50 text-purple-700 border-purple-200',
-  gestor: 'bg-blue-50 text-blue-700 border-blue-200',
-  sdr: 'bg-blue-50 text-blue-700 border-blue-200',
-  closer: 'bg-green-50 text-green-700 border-green-200',
-  'social-seller': 'bg-cyan-50 text-cyan-700 border-cyan-200',
-  cs: 'bg-orange-50 text-orange-700 border-orange-200',
-  trafego: 'bg-pink-50 text-pink-700 border-pink-200'
-};
-
-export default function PainelAdmin() {
+function PainelAdminContent() {
   const { theme, setTheme, isClean } = useTheme();
-  const roleColors = isClean ? roleColorsClean : roleColorsDark;
-  const [activeTab, setActiveTab] = useState('usuarios');
-  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const { empresas, empresaSelecionada, criarEmpresa, excluirEmpresa, carregarEmpresas, selecionarEmpresa } = useEmpresa();
+  const [activeTab, setActiveTab] = useState('clientes');
   const [funis, setFunis] = useState<Funil[]>([]);
   const [campanhas, setCampanhas] = useState<Campanha[]>([]);
   const [campanhasPorFunil, setCampanhasPorFunil] = useState<Record<string, Campanha[]>>({});
@@ -157,9 +104,7 @@ export default function PainelAdmin() {
   const [conjuntoSelecionadoParaAnuncio, setConjuntoSelecionadoParaAnuncio] = useState<string>('');
 
   // Modal states
-  const [modalUsuarioAberto, setModalUsuarioAberto] = useState(false);
-  const [modalEditarUsuarioAberto, setModalEditarUsuarioAberto] = useState(false);
-  const [usuarioEditando, setUsuarioEditando] = useState<Usuario | null>(null);
+  const [modalClienteAberto, setModalClienteAberto] = useState(false);
   const [modalFunilAberto, setModalFunilAberto] = useState(false);
   const [modalCampanhaAberto, setModalCampanhaAberto] = useState(false);
   const [modalConjuntoAberto, setModalConjuntoAberto] = useState(false);
@@ -172,12 +117,7 @@ export default function PainelAdmin() {
   const [conjuntoEditando, setConjuntoEditando] = useState<ConjuntoAnuncio | null>(null);
 
   // Form states
-  const [novoUsuario, setNovoUsuario] = useState({
-    nome: '',
-    email: '',
-    senha: '',
-    role: 'sdr' as UserRole
-  });
+  const [novoCliente, setNovoCliente] = useState('');
 
   const [novoFunil, setNovoFunil] = useState({
     nome: '',
@@ -199,243 +139,124 @@ export default function PainelAdmin() {
     arquivo: null as File | null
   });
 
-  // Carregar funis e campanhas ao montar
-  useEffect(() => {
-    carregarUsuarios();
-    carregarFunis();
-  }, []);
+  // Sync all state
+  const [sincronizandoTudo, setSincronizandoTudo] = useState(false);
 
-  const carregarUsuarios = async () => {
-    try {
-      console.log('📊 Carregando usuários...');
-      
-      // Verificar sessão atual
-      const { data: sessionData } = await supabase.auth.getSession();
-      console.log('👤 Sessão atual:', sessionData?.session?.user?.email);
-      
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('created_at', { ascending: false});
-
-      if (error) {
-        console.error('❌ Erro ao carregar usuários:', error);
-        console.error('❌ Detalhes:', error.message, error.hint);
-        toast.error('Erro ao carregar usuários: ' + error.message);
-        return;
-      }
-
-      console.log('✅ Usuários carregados:', data);
-      console.log('📈 Total:', data?.length || 0);
-      setUsuarios(data || []);
-      
-      if (!data || data.length === 0) {
-        console.warn('⚠️ Nenhum usuário encontrado no banco!');
-      }
-    } catch (error: any) {
-      console.error('❌ Erro exception:', error);
-      toast.error('Erro ao carregar usuários');
-    }
-  };
-
-  const handleCriarUsuario = async () => {
-    try {
-      // Validações
-      if (!novoUsuario.nome || !novoUsuario.email || !novoUsuario.senha) {
-        toast.error('Preencha todos os campos');
-        return;
-      }
-
-      // Validar email
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(novoUsuario.email)) {
-        toast.error('Email inválido');
-        return;
-      }
-
-      // Validar senha
-      if (novoUsuario.senha.length < 6) {
-        toast.error('A senha deve ter no mínimo 6 caracteres');
-        return;
-      }
-
-      setLoading(true);
-      console.log('🔐 Criando usuário no Supabase Auth...');
-
-      // Criar usuário no Supabase Auth (auto-confirmado)
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: novoUsuario.email,
-        password: novoUsuario.senha,
-        options: {
-          data: {
-            nome: novoUsuario.nome,
-          },
-          emailRedirectTo: `${window.location.origin}/login`,
-          // Auto-confirmar email (requer desabilitar confirmação nas configs do Supabase)
-        }
-      });
-
-      if (authError) {
-        console.error('❌ Erro ao criar auth:', authError);
-        if (authError.message.includes('already registered')) {
-          toast.error('Este email já está cadastrado');
-        } else {
-          toast.error('Erro ao criar usuário: ' + authError.message);
-        }
-        setLoading(false);
-        return;
-      }
-
-      if (!authData.user) {
-        toast.error('Erro ao criar usuário');
-        setLoading(false);
-        return;
-      }
-
-      console.log('✅ Auth criado! User ID:', authData.user.id);
-
-      // Pequeno delay para garantir que o auth foi processado
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Criar registro na tabela users
-      console.log('💾 Inserindo na tabela users...');
-      const { error: insertError } = await supabase
-        .from('users')
-        .insert({
-          id: authData.user.id,
-          nome: novoUsuario.nome,
-          email: novoUsuario.email,
-          role: novoUsuario.role,
-          ativo: true
-        });
-
-      if (insertError) {
-        console.error('❌ Erro ao inserir na tabela:', insertError);
-        toast.error('Erro ao criar registro: ' + insertError.message);
-        setLoading(false);
-        return;
-      }
-
-      console.log('✅ Usuário criado com sucesso!');
-      toast.success('Usuário criado com sucesso!');
-      
-      // Limpar form e fechar modal
-      setNovoUsuario({ nome: '', email: '', senha: '', role: 'sdr' });
-      setModalUsuarioAberto(false);
-      
-      // Recarregar lista
-      await carregarUsuarios();
-
-    } catch (error: any) {
-      console.error('❌ Erro geral:', error);
-      toast.error('Erro ao criar usuário');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleExcluirUsuario = async (usuarioId: string, usuarioNome: string) => {
-    if (!confirm(`Deseja realmente excluir o usuário "${usuarioNome}"?`)) {
+  const sincronizarTudo = async () => {
+    if (!empresas.length) {
+      toast.error('Nenhuma empresa cadastrada');
       return;
     }
+    setSincronizandoTudo(true);
+    let sucessos = 0;
+    let erros = 0;
 
+    for (const empresa of empresas) {
+      const eid = empresa.id;
+      try {
+        // Sync Meta Ads
+        await fetch(`/api/meta/sync?empresa_id=${eid}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ syncAll: true }),
+        });
+        sucessos++;
+      } catch { erros++; }
+
+      try {
+        // Fetch Typebot integrations and sync each
+        const tbRes = await fetch(`/api/typebot/config?empresa_id=${eid}`);
+        if (tbRes.ok) {
+          const tbData = await tbRes.json();
+          for (const integ of (tbData.integracoes || [])) {
+            if (!integ.ativo) continue;
+            const hoje = new Date();
+            const seteDias = new Date(hoje);
+            seteDias.setDate(hoje.getDate() - 6);
+            await fetch(`/api/typebot/sync?empresa_id=${eid}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                integracaoId: integ.id,
+                dataInicio: seteDias.toISOString().split('T')[0],
+                dataFim: hoje.toISOString().split('T')[0],
+              }),
+            });
+          }
+          sucessos++;
+        }
+      } catch { erros++; }
+
+      try {
+        // Fetch Kommo integrations and sync each
+        const kmRes = await fetch(`/api/kommo/config?empresa_id=${eid}`);
+        if (kmRes.ok) {
+          const kmData = await kmRes.json();
+          for (const integ of (kmData.integracoes || [])) {
+            if (!integ.ativo) continue;
+            await fetch(`/api/kommo/sync?empresa_id=${eid}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ integracao_id: integ.id }),
+            });
+          }
+          sucessos++;
+        }
+      } catch { erros++; }
+    }
+
+    setSincronizandoTudo(false);
+    if (erros > 0) {
+      toast.warning(`Sincronização concluída: ${sucessos} sucesso(s), ${erros} erro(s)`);
+    } else {
+      toast.success(`Todas as ${empresas.length} empresa(s) sincronizadas com sucesso!`);
+    }
+  };
+
+  // Carregar funis e campanhas ao montar e quando empresa muda
+  useEffect(() => {
+    carregarFunis();
+  }, [empresaSelecionada?.id]);
+
+  const handleCriarCliente = async () => {
+    if (!novoCliente.trim()) {
+      toast.error('Digite o nome do cliente');
+      return;
+    }
+    setLoading(true);
     try {
-      setLoading(true);
-      console.log('🗑️ Excluindo usuário:', usuarioId);
-
-      const { error } = await supabase
-        .from('users')
-        .delete()
-        .eq('id', usuarioId);
-
-      if (error) {
-        console.error('❌ Erro ao excluir:', error);
-        toast.error('Erro ao excluir usuário: ' + error.message);
-        return;
+      const empresa = await criarEmpresa(novoCliente.trim());
+      if (empresa) {
+        toast.success(`Cliente "${novoCliente.trim()}" criado com sucesso!`);
+        setNovoCliente('');
+        setModalClienteAberto(false);
+        // Auto-selecionar o novo cliente
+        selecionarEmpresa(empresa);
+      } else {
+        toast.error('Erro ao criar cliente');
       }
-
-      console.log('✅ Usuário excluído!');
-      toast.success('Usuário excluído com sucesso!');
-      await carregarUsuarios();
-    } catch (error: any) {
-      console.error('❌ Erro:', error);
-      toast.error('Erro ao excluir usuário');
+    } catch (error) {
+      console.error('Erro ao criar cliente:', error);
+      toast.error('Erro ao criar cliente');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleToggleAtivo = async (usuarioId: string, ativoAtual: boolean) => {
-    try {
-      setLoading(true);
-      console.log('🔄 Alterando status:', usuarioId, !ativoAtual);
-
-      const { error } = await supabase
-        .from('users')
-        .update({ ativo: !ativoAtual })
-        .eq('id', usuarioId);
-
-      if (error) {
-        console.error('❌ Erro ao atualizar:', error);
-        toast.error('Erro ao atualizar status: ' + error.message);
-        return;
-      }
-
-      console.log('✅ Status atualizado!');
-      toast.success(ativoAtual ? 'Usuário desativado' : 'Usuário ativado');
-      await carregarUsuarios();
-    } catch (error: any) {
-      console.error('❌ Erro:', error);
-      toast.error('Erro ao atualizar status');
-    } finally {
-      setLoading(false);
+  const handleExcluirCliente = async (id: string, nome: string) => {
+    if (!confirm(`Deseja realmente excluir o cliente "${nome}"?\n\nTodos os funis, campanhas e métricas deste cliente serão perdidos.`)) {
+      return;
     }
-  };
-
-  const handleEditarUsuario = (usuario: Usuario) => {
-    setUsuarioEditando(usuario);
-    setModalEditarUsuarioAberto(true);
-  };
-
-  const handleSalvarEdicao = async (novaSenha?: string) => {
-    if (!usuarioEditando) return;
-
+    setLoading(true);
     try {
-      setLoading(true);
-      console.log('💾 Atualizando usuário:', usuarioEditando.id);
-
-      // Atualizar dados na tabela users
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({
-          nome: usuarioEditando.nome,
-          role: usuarioEditando.role,
-          ativo: usuarioEditando.ativo
-        })
-        .eq('id', usuarioEditando.id);
-
-      if (updateError) {
-        console.error('❌ Erro ao atualizar:', updateError);
-        toast.error('Erro ao atualizar usuário: ' + updateError.message);
-        return;
+      const ok = await excluirEmpresa(id);
+      if (ok) {
+        toast.success(`Cliente "${nome}" excluído!`);
+      } else {
+        toast.error('Erro ao excluir cliente');
       }
-
-      // Se forneceu nova senha, resetar no Auth
-      if (novaSenha && novaSenha.length >= 6) {
-        console.log('🔑 Resetando senha...');
-        // Nota: Isso requer permissões de admin no Supabase
-        // Por enquanto, vamos apenas notificar
-        toast.info('Para alterar senha, use o painel de Authentication do Supabase');
-      }
-
-      console.log('✅ Usuário atualizado!');
-      toast.success('Usuário atualizado com sucesso!');
-      setModalEditarUsuarioAberto(false);
-      setUsuarioEditando(null);
-      await carregarUsuarios();
-    } catch (error: any) {
-      console.error('❌ Erro:', error);
-      toast.error('Erro ao atualizar usuário');
+    } catch (error) {
+      toast.error('Erro ao excluir cliente');
     } finally {
       setLoading(false);
     }
@@ -444,8 +265,10 @@ export default function PainelAdmin() {
   const carregarFunis = async () => {
     setLoading(true);
     try {
-      // Buscar dados via API route (não direto do Supabase)
-      const response = await fetch('/api/funis');
+      // Buscar dados via API route com empresa_id selecionada
+      const params = new URLSearchParams();
+      if (empresaSelecionada?.id) params.set('empresa_id', empresaSelecionada.id);
+      const response = await fetch(`/api/funis${params.toString() ? `?${params.toString()}` : ''}`);
       
       if (!response.ok) {
         throw new Error('Erro ao carregar dados');
@@ -500,6 +323,11 @@ export default function PainelAdmin() {
       return;
     }
 
+    if (!empresaSelecionada?.id) {
+      toast.error('Selecione uma empresa primeiro');
+      return;
+    }
+
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -507,7 +335,7 @@ export default function PainelAdmin() {
         .insert({
           nome: novoFunil.nome,
           descricao: novoFunil.descricao,
-          empresa_id: '550e8400-e29b-41d4-a716-446655440000' // ID fixo da empresa
+          empresa_id: empresaSelecionada.id
         })
         .select()
         .single();
@@ -944,7 +772,7 @@ export default function PainelAdmin() {
   };
 
   return (
-    <LayoutComFunis>
+    <>
       <div className={`min-h-screen p-6 ${isClean ? 'bg-gray-50' : 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900'}`}>
         <div className="max-w-7xl mx-auto">
           {/* Header */}
@@ -963,9 +791,9 @@ export default function PainelAdmin() {
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className={isClean ? 'bg-white border border-gray-200 shadow-sm' : 'bg-gray-800/50 border border-gray-700'}>
-              <TabsTrigger value="usuarios" className={isClean ? 'data-[state=active]:bg-amber-600 data-[state=active]:text-white' : 'data-[state=active]:bg-purple-600'}>
+              <TabsTrigger value="clientes" className={isClean ? 'data-[state=active]:bg-amber-600 data-[state=active]:text-white' : 'data-[state=active]:bg-purple-600'}>
                 <Users className="h-4 w-4 mr-2" />
-                Usuários
+                Clientes
               </TabsTrigger>
               <TabsTrigger value="funis" className={isClean ? 'data-[state=active]:bg-amber-600 data-[state=active]:text-white' : 'data-[state=active]:bg-cyan-600'}>
                 <Layers className="h-4 w-4 mr-2" />
@@ -979,25 +807,29 @@ export default function PainelAdmin() {
                 <Settings className="h-4 w-4 mr-2" />
                 Configurações
               </TabsTrigger>
+              <TabsTrigger value="relatorio" className={isClean ? 'data-[state=active]:bg-amber-600 data-[state=active]:text-white' : 'data-[state=active]:bg-green-600'}>
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Relatório
+              </TabsTrigger>
             </TabsList>
 
-            {/* Tab: Usuários */}
-            <TabsContent value="usuarios" className="space-y-4">
+            {/* Tab: Clientes */}
+            <TabsContent value="clientes" className="space-y-4">
               <Card className={isClean ? 'bg-white border border-gray-200/60 shadow-sm' : 'bg-gray-800/50 border-gray-700'}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
                       <CardTitle className={`flex items-center gap-2 ${isClean ? 'text-gray-900' : 'text-white'}`}>
                         <Users className="h-5 w-5" />
-                        Gerenciar Usuários
+                        Meus Clientes
                       </CardTitle>
                       <CardDescription className={isClean ? 'text-gray-500' : 'text-gray-400'}>
-                        Crie e gerencie usuários do sistema
+                        Gerencie seus clientes de tráfego pago
                       </CardDescription>
                     </div>
                     <div className="flex gap-2">
                       <Button
-                        onClick={() => carregarUsuarios()}
+                        onClick={() => carregarEmpresas()}
                         variant="outline"
                         className={isClean ? 'border-gray-200' : 'border-gray-600'}
                         disabled={loading}
@@ -1005,11 +837,11 @@ export default function PainelAdmin() {
                         {loading ? 'Carregando...' : 'Recarregar'}
                       </Button>
                       <Button
-                        onClick={() => setModalUsuarioAberto(true)}
+                        onClick={() => setModalClienteAberto(true)}
                         className={isClean ? 'bg-amber-600 hover:bg-amber-700' : 'bg-purple-600 hover:bg-purple-700'}
                       >
                         <Plus className="h-4 w-4 mr-2" />
-                        Novo Usuário
+                        Novo Cliente
                       </Button>
                     </div>
                   </div>
@@ -1019,83 +851,72 @@ export default function PainelAdmin() {
                   <div className="relative">
                     <Search className={`absolute left-3 top-3 h-4 w-4 ${isClean ? 'text-gray-400' : 'text-gray-400'}`} />
                     <Input
-                      placeholder="Buscar usuários..."
+                      placeholder="Buscar clientes..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className={`pl-10 ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-900 border-gray-600 text-white'}`}
                     />
                   </div>
 
-                  {/* Debug Info */}
                   <div className="text-xs text-gray-500">
-                    Total de usuários: {usuarios.length}
+                    Total de clientes: {empresas.length}
                   </div>
 
-                  {/* User List */}
+                  {/* Client List */}
                   <div className="grid gap-3">
-                    {usuarios.length === 0 ? (
+                    {empresas.length === 0 ? (
                       <div className={`text-center py-8 ${isClean ? 'text-gray-400' : 'text-gray-400'}`}>
                         <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                        <p>Nenhum usuário encontrado</p>
-                        <p className="text-xs mt-1">Clique em "Novo Usuário" para adicionar</p>
+                        <p>Nenhum cliente cadastrado</p>
+                        <p className="text-xs mt-1">Clique em &quot;Novo Cliente&quot; para adicionar</p>
                       </div>
                     ) : (
-                      usuarios
-                        .filter((usuario) => 
-                          usuario.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          usuario.email.toLowerCase().includes(searchTerm.toLowerCase())
+                      empresas
+                        .filter((emp) =>
+                          emp.nome.toLowerCase().includes(searchTerm.toLowerCase())
                         )
-                        .map((usuario) => {
-                          const IconRole = roleIcons[usuario.role];
-                          return (
-                            <div
-                              key={usuario.id}
-                              className={`rounded-lg p-4 transition-colors ${isClean ? 'bg-gray-50 border border-gray-200 hover:border-gray-300' : 'bg-gray-900/50 border border-gray-700 hover:border-gray-600'}`}
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                  <div className={`h-10 w-10 rounded-full flex items-center justify-center ${isClean ? 'bg-gradient-to-br from-amber-600 to-amber-700' : 'bg-gradient-to-br from-purple-600 to-pink-600'}`}>
-                                    <IconRole className="h-5 w-5 text-white" />
-                                  </div>
-                              <div>
-                                <h4 className={`font-medium ${isClean ? 'text-gray-900' : 'text-white'}`}>{usuario.nome}</h4>
-                                <p className={`text-sm ${isClean ? 'text-gray-500' : 'text-gray-400'}`}>{usuario.email}</p>
+                        .map((emp) => (
+                          <div
+                            key={emp.id}
+                            className={`rounded-lg p-4 transition-colors cursor-pointer ${
+                              empresaSelecionada?.id === emp.id
+                                ? (isClean ? 'bg-amber-50 border-2 border-amber-400' : 'bg-purple-900/30 border-2 border-purple-500')
+                                : (isClean ? 'bg-gray-50 border border-gray-200 hover:border-amber-300' : 'bg-gray-900/50 border border-gray-700 hover:border-gray-500')
+                            }`}
+                            onClick={() => selecionarEmpresa(emp)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className={`h-10 w-10 rounded-full flex items-center justify-center text-white font-bold ${isClean ? 'bg-gradient-to-br from-amber-500 to-amber-600' : 'bg-gradient-to-br from-purple-600 to-pink-600'}`}>
+                                  {emp.nome.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <h4 className={`font-medium ${isClean ? 'text-gray-900' : 'text-white'}`}>{emp.nome}</h4>
+                                  <p className={`text-xs ${isClean ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    Criado em {new Date(emp.created_at || '').toLocaleDateString('pt-BR')}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {empresaSelecionada?.id === emp.id && (
+                                  <Badge className={isClean ? 'bg-amber-100 text-amber-700 border-amber-300' : 'bg-purple-500/20 text-purple-300 border-purple-500/30'}>
+                                    Selecionado
+                                  </Badge>
+                                )}
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-red-400 hover:text-red-300"
+                                  onClick={(e) => { e.stopPropagation(); handleExcluirCliente(emp.id, emp.nome); }}
+                                  disabled={loading}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Badge className={roleColors[usuario.role]}>
-                                {roleLabels[usuario.role]}
-                              </Badge>
-                              <Badge 
-                                variant={usuario.ativo ? 'default' : 'secondary'}
-                                className="cursor-pointer hover:opacity-80 transition-opacity"
-                                onClick={() => handleToggleAtivo(usuario.id, usuario.ativo)}
-                              >
-                                {usuario.ativo ? 'Ativo' : 'Inativo'}
-                              </Badge>
-                              <Button 
-                                size="sm" 
-                                variant="ghost" 
-                                className={isClean ? 'text-gray-400 hover:text-gray-700' : 'text-gray-400 hover:text-white'}
-                                onClick={() => handleEditarUsuario(usuario)}
-                                disabled={loading}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button 
-                                size="sm" 
-                                variant="ghost" 
-                                className="text-red-400 hover:text-red-300"
-                                onClick={() => handleExcluirUsuario(usuario.id, usuario.nome)}
-                                disabled={loading}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
                           </div>
-                        </div>
-                      );
-                    }))}
+                        ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1669,84 +1490,77 @@ export default function PainelAdmin() {
 
             {/* Tab: Configurações */}
             <TabsContent value="configuracoes" className="space-y-4">
+              {/* Botão Sincronizar Tudo */}
+              <div className="flex justify-end">
+                <Button
+                  onClick={sincronizarTudo}
+                  disabled={sincronizandoTudo}
+                  className="gap-2"
+                  variant="outline"
+                >
+                  {sincronizandoTudo ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  {sincronizandoTudo ? 'Sincronizando...' : 'Sincronizar Todas as Empresas'}
+                </Button>
+              </div>
+
               {/* Integração Meta Ads */}
-              <MetaIntegrationCard />
+              <MetaIntegrationCard empresaId={empresaSelecionada?.id} />
 
               {/* Integração Typebot */}
-              <TypebotIntegrationCard />
+              <TypebotIntegrationCard empresaId={empresaSelecionada?.id} />
 
               {/* Integração Kommo CRM */}
-              <KommoIntegrationCard />
+              <KommoIntegrationCard empresaId={empresaSelecionada?.id} />
+            </TabsContent>
+
+            {/* Tab: Relatório Externo */}
+            <TabsContent value="relatorio" className="space-y-4">
+              <RelatorioConfigCard />
+              <FeedbackPerformanceCard />
             </TabsContent>
           </Tabs>
         </div>
       </div>
 
-      {/* Modal Criar Usuário */}
-      {modalUsuarioAberto && (
+      {/* Modal Criar Cliente */}
+      {modalClienteAberto && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className={`rounded-lg p-6 max-w-md w-full ${isClean ? 'bg-white border border-gray-200 shadow-lg' : 'bg-gray-900 border border-gray-700'}`}>
-            <h3 className={`text-xl font-bold mb-4 ${isClean ? 'text-gray-900' : 'text-white'}`}>Criar Novo Usuário</h3>
+            <h3 className={`text-xl font-bold mb-4 ${isClean ? 'text-gray-900' : 'text-white'}`}>Novo Cliente</h3>
+            <p className={`text-sm mb-4 ${isClean ? 'text-gray-500' : 'text-gray-400'}`}>
+              Adicione um novo cliente de tráfego pago
+            </p>
             <div className="space-y-4">
               <div>
-                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Nome Completo</Label>
+                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Nome do Cliente</Label>
                 <Input
-                  value={novoUsuario.nome}
-                  onChange={(e) => setNovoUsuario({ ...novoUsuario, nome: e.target.value })}
+                  value={novoCliente}
+                  onChange={(e) => setNovoCliente(e.target.value)}
                   className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}
-                  placeholder="Ex: João Silva"
+                  placeholder="Ex: Dr. Leonardo"
+                  onKeyDown={(e) => e.key === 'Enter' && handleCriarCliente()}
+                  autoFocus
                 />
-              </div>
-              <div>
-                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Email</Label>
-                <Input
-                  type="email"
-                  value={novoUsuario.email}
-                  onChange={(e) => setNovoUsuario({ ...novoUsuario, email: e.target.value })}
-                  className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}
-                  placeholder="joao@exemplo.com"
-                />
-              </div>
-              <div>
-                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Senha</Label>
-                <Input
-                  type="password"
-                  value={novoUsuario.senha}
-                  onChange={(e) => setNovoUsuario({ ...novoUsuario, senha: e.target.value })}
-                  className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}
-                  placeholder="••••••••"
-                />
-              </div>
-              <div>
-                <Label className={isClean ? 'text-gray-700' : 'text-gray-300'}>Função</Label>
-                <select
-                  value={novoUsuario.role}
-                  onChange={(e) => setNovoUsuario({ ...novoUsuario, role: e.target.value as UserRole })}
-                  className={`w-full px-3 py-2 rounded border ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}`}
-                >
-                  <option value="admin">Administrador - Acesso Total</option>
-                  <option value="trafego">Tráfego - Apenas Dashboard Tráfego</option>
-                  <option value="sdr">SDR - Apenas Dashboard SDR</option>
-                  <option value="closer">Closer - Apenas Dashboard Closer</option>
-                  <option value="social-seller">Social Seller - Apenas Dashboard Social Seller</option>
-                  <option value="cs">Customer Success - Apenas Dashboard CS</option>
-                </select>
               </div>
             </div>
             <div className="flex gap-2 mt-6">
               <Button
-                onClick={() => setModalUsuarioAberto(false)}
+                onClick={() => { setModalClienteAberto(false); setNovoCliente(''); }}
                 variant="outline"
                 className={`flex-1 ${isClean ? 'border-gray-200' : 'border-gray-600'}`}
               >
                 Cancelar
               </Button>
               <Button
-                onClick={handleCriarUsuario}
-                disabled={loading}
+                onClick={handleCriarCliente}
+                disabled={loading || !novoCliente.trim()}
                 className={`flex-1 ${isClean ? 'bg-amber-600 hover:bg-amber-700' : 'bg-purple-600 hover:bg-purple-700'}`}
               >
-                {loading ? 'Criando...' : 'Criar Usuário'}
+                {loading ? 'Criando...' : 'Criar Cliente'}
               </Button>
             </div>
           </div>
@@ -2050,229 +1864,6 @@ export default function PainelAdmin() {
         </div>
       )}
 
-      {/* Modal: Criar Usuário */}
-      <Dialog open={modalUsuarioAberto} onOpenChange={setModalUsuarioAberto}>
-        <DialogContent className={`max-w-md ${isClean ? 'bg-white border-gray-200 text-gray-900' : 'bg-gray-800 border-gray-700 text-white'}`}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Users className={isClean ? 'h-5 w-5 text-amber-600' : 'h-5 w-5 text-purple-400'} />
-              Criar Novo Usuário
-            </DialogTitle>
-            <DialogDescription className={isClean ? 'text-gray-500' : 'text-gray-400'}>
-              Preencha os dados do novo usuário do sistema
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label htmlFor="nome">Nome Completo</Label>
-              <Input
-                id="nome"
-                placeholder="Igor Macedo"
-                value={novoUsuario.nome}
-                onChange={(e) => setNovoUsuario({ ...novoUsuario, nome: e.target.value })}
-                className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-900 border-gray-600 text-white'}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="igorwillian.macedo@gmail.com"
-                value={novoUsuario.email}
-                onChange={(e) => setNovoUsuario({ ...novoUsuario, email: e.target.value })}
-                className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-900 border-gray-600 text-white'}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="senha">Senha</Label>
-              <Input
-                id="senha"
-                type="password"
-                placeholder="Mínimo 6 caracteres"
-                value={novoUsuario.senha}
-                onChange={(e) => setNovoUsuario({ ...novoUsuario, senha: e.target.value })}
-                className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-900 border-gray-600 text-white'}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="funcao">Função</Label>
-              <Select
-                value={novoUsuario.role}
-                onValueChange={(value) => setNovoUsuario({ ...novoUsuario, role: value as UserRole })}
-              >
-                <SelectTrigger className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-900 border-gray-600 text-white'}>
-                  <SelectValue placeholder="Selecione a função" />
-                </SelectTrigger>
-                <SelectContent className={isClean ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'}>
-                  <SelectItem value="admin" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
-                    Administrador - Acesso Total
-                  </SelectItem>
-                  <SelectItem value="gestor" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
-                    Gestor de Marketing
-                  </SelectItem>
-                  <SelectItem value="sdr" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
-                    SDR
-                  </SelectItem>
-                  <SelectItem value="closer" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
-                    Closer
-                  </SelectItem>
-                  <SelectItem value="social-seller" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
-                    Social Seller
-                  </SelectItem>
-                  <SelectItem value="cs" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
-                    Customer Success
-                  </SelectItem>
-                  <SelectItem value="trafego" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
-                    Tráfego Pago
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex gap-3 pt-4">
-              <Button
-                onClick={() => setModalUsuarioAberto(false)}
-                variant="outline"
-                className={`flex-1 ${isClean ? 'border-gray-200' : 'border-gray-600'}`}
-                disabled={loading}
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={handleCriarUsuario}
-                disabled={loading}
-                className={`flex-1 ${isClean ? 'bg-amber-600 hover:bg-amber-700' : 'bg-purple-600 hover:bg-purple-700'}`}
-              >
-                {loading ? 'Criando...' : 'Criar Usuário'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal de Edição de Usuário */}
-      <Dialog open={modalEditarUsuarioAberto} onOpenChange={setModalEditarUsuarioAberto}>
-        <DialogContent className={isClean ? 'bg-white border-gray-200 text-gray-900' : 'bg-gray-900 border-gray-700 text-white'}>
-          <DialogHeader>
-            <DialogTitle className={`text-2xl font-bold ${isClean ? 'text-amber-600' : 'text-purple-400'}`}>
-              Editar Usuário
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            {/* Nome */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Nome Completo</label>
-              <input
-                type="text"
-                value={usuarioEditando?.nome || ''}
-                onChange={(e) => setUsuarioEditando(prev => 
-                  prev ? { ...prev, nome: e.target.value } : null
-                )}
-                className={`w-full p-3 rounded-lg border ${isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-800 border-gray-600 text-white'}`}
-                placeholder="Digite o nome completo"
-              />
-            </div>
-
-            {/* E-mail (somente leitura) */}
-            <div>
-              <label className="block text-sm font-medium mb-2">E-mail</label>
-              <input
-                type="email"
-                value={usuarioEditando?.email || ''}
-                disabled
-                className={`w-full p-3 rounded-lg border cursor-not-allowed ${isClean ? 'bg-gray-100 border-gray-200 text-gray-400' : 'bg-gray-700 border-gray-600 text-gray-400'}`}
-              />
-              <p className="text-xs text-gray-400 mt-1">O e-mail não pode ser alterado</p>
-            </div>
-
-            {/* Função */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Função</label>
-              <Select
-                value={usuarioEditando?.role || ''}
-                onValueChange={(value) => setUsuarioEditando(prev => 
-                  prev ? { ...prev, role: value as Usuario['role'] } : null
-                )}
-              >
-                <SelectTrigger className={isClean ? 'bg-white border-gray-200 text-gray-700' : 'bg-gray-900 border-gray-600 text-white'}>
-                  <SelectValue placeholder="Selecione a função" />
-                </SelectTrigger>
-                <SelectContent className={isClean ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'}>
-                  <SelectItem value="admin" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
-                    Administrador - Acesso Total
-                  </SelectItem>
-                  <SelectItem value="gestor" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
-                    Gestor de Marketing
-                  </SelectItem>
-                  <SelectItem value="sdr" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
-                    SDR
-                  </SelectItem>
-                  <SelectItem value="closer" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
-                    Closer
-                  </SelectItem>
-                  <SelectItem value="social-seller" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
-                    Social Seller
-                  </SelectItem>
-                  <SelectItem value="cs" className={isClean ? 'text-gray-700 hover:bg-gray-50' : 'text-white hover:bg-gray-700'}>
-                    CS - Customer Success
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Status Ativo */}
-            <div className={`flex items-center gap-3 p-3 rounded-lg ${isClean ? 'bg-gray-50' : 'bg-gray-800'}`}>
-              <input
-                type="checkbox"
-                id="ativo-edit"
-                checked={usuarioEditando?.ativo || false}
-                onChange={(e) => setUsuarioEditando(prev => 
-                  prev ? { ...prev, ativo: e.target.checked } : null
-                )}
-                className={`w-4 h-4 rounded ${isClean ? 'text-amber-600 bg-white border-gray-300 focus:ring-amber-600' : 'text-purple-600 bg-gray-700 border-gray-600 focus:ring-purple-500'}`}
-              />
-              <label htmlFor="ativo-edit" className="text-sm font-medium cursor-pointer">
-                Usuário Ativo
-              </label>
-            </div>
-
-            {/* Nota sobre senha */}
-            <div className="p-3 bg-yellow-900/20 border border-yellow-700/30 rounded-lg">
-              <p className="text-xs text-yellow-400">
-                ⚠️ Para alterar a senha, entre em contato com o suporte ou use a opção de reset de senha no login.
-              </p>
-            </div>
-
-            {/* Botões */}
-            <div className="flex gap-3 pt-4">
-              <Button
-                onClick={() => {
-                  setModalEditarUsuarioAberto(false);
-                  setUsuarioEditando(null);
-                }}
-                variant="outline"
-                className={`flex-1 ${isClean ? 'border-gray-200' : 'border-gray-600'}`}
-                disabled={loading}
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={() => handleSalvarEdicao()}
-                disabled={loading}
-                className={`flex-1 ${isClean ? 'bg-amber-600 hover:bg-amber-700' : 'bg-purple-600 hover:bg-purple-700'}`}
-              >
-                {loading ? 'Salvando...' : 'Salvar Alterações'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Modal de Edição de Funil */}
       <Dialog open={modalEditarFunilAberto} onOpenChange={setModalEditarFunilAberto}>
         <DialogContent className={isClean ? 'bg-white border-gray-200 text-gray-900' : 'bg-gray-900 border-gray-700 text-white'}>
@@ -2455,6 +2046,14 @@ export default function PainelAdmin() {
           </div>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+export default function PainelAdmin() {
+  return (
+    <LayoutComFunis>
+      <PainelAdminContent />
     </LayoutComFunis>
   );
 }

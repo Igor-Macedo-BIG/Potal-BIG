@@ -5,6 +5,7 @@ import { ChevronDown, Filter, X, Check } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useCampanhaContext } from '@/contexts/CampanhaContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useEmpresa } from '@/contexts/EmpresaContext';
 import { cn } from '@/lib/utils';
 
 interface FilterOption {
@@ -28,28 +29,29 @@ interface Props {
 export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
   const { isClean } = useTheme();
   const { filtroData } = useCampanhaContext();
+  const { empresaSelecionada } = useEmpresa();
 
-  // Carregar filtros do localStorage
-  const [filters, setFilters] = useState<FilterState>(() => {
+  // Inicializar com valor padrão (sem localStorage) para evitar hydration mismatch
+  const [filters, setFilters] = useState<FilterState>({
+    funil: null,
+    campanha: null,
+    publico: null,
+    criativo: null,
+  });
+
+  // Hidratar do localStorage apenas no client
+  useEffect(() => {
     try {
-      if (typeof window !== 'undefined') {
-        const saved = localStorage.getItem('filtrosCampanhaAtivos');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          console.log('🔄 Filtros carregados do localStorage:', parsed);
-          return parsed;
-        }
+      const saved = localStorage.getItem('filtrosCampanhaAtivos');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        console.log('🔄 Filtros carregados do localStorage:', parsed);
+        setFilters(parsed);
       }
     } catch (err) {
       console.error('Erro ao carregar filtros do localStorage:', err);
     }
-    return {
-      funil: null,
-      campanha: null,
-      publico: null,
-      criativo: null,
-    };
-  });
+  }, []);
 
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -141,7 +143,9 @@ export function FiltrosCascata({ onFiltersChange, className = '' }: Props) {
       
       console.log('Iniciando carregamento de funis via API...');
       
-      const response = await fetch('/api/funis');
+      const params = new URLSearchParams();
+      if (empresaSelecionada?.id) params.set('empresa_id', empresaSelecionada.id);
+      const response = await fetch(`/api/funis${params.toString() ? `?${params.toString()}` : ''}`);
       
       if (!response.ok) {
         throw new Error('Erro ao carregar funis');

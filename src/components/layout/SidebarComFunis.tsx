@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/lib/supabase';
 import { useCampanhaContext } from '@/contexts/CampanhaContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useEmpresa } from '@/contexts/EmpresaContext';
 import ModalCriarFunil from '@/components/modals/ModalCriarFunil';
 import ModalCriarCampanha from '@/components/modals/ModalCriarCampanha';
 import ModalCriacaoAninhada from '@/components/modals/ModalCriacaoAninhada';
@@ -31,7 +32,9 @@ import {
   HeadphonesIcon,
   Share2,
   Shield,
-  Camera
+  Camera,
+  Building2,
+  Check
 } from 'lucide-react';
 import type { Funil, Campanha } from '@/types/hierarchical';
 
@@ -56,6 +59,7 @@ export function SidebarComFunis({ empresaNome, isOpen, onClose }: SidebarProps) 
   const router = useRouter();
   const { selecionarCampanha, campanhaAtiva } = useCampanhaContext();
   const { isClean } = useTheme();
+  const { empresas, empresaSelecionada, selecionarEmpresa, carregarEmpresas } = useEmpresa();
   const [funis, setFunis] = useState<Funil[]>([]);
   const [campanhasPorFunil, setCampanhasPorFunil] = useState<Record<string, Campanha[]>>({});
   const [funisExpandidos, setFunisExpandidos] = useState<Set<string>>(new Set());
@@ -63,7 +67,9 @@ export function SidebarComFunis({ empresaNome, isOpen, onClose }: SidebarProps) 
   const [modalCriacaoAberto, setModalCriacaoAberto] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  const [empresaDropdownOpen, setEmpresaDropdownOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const empresaDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     carregarFunis();
@@ -71,6 +77,22 @@ export function SidebarComFunis({ empresaNome, isOpen, onClose }: SidebarProps) 
     // Carregar foto de perfil do localStorage
     const savedPhoto = localStorage.getItem('profile-photo');
     if (savedPhoto) setProfilePhoto(savedPhoto);
+  }, []);
+
+  // Recarregar funis quando a empresa selecionada mudar
+  useEffect(() => {
+    carregarFunis();
+  }, [empresaSelecionada?.id]);
+
+  // Fechar dropdown ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (empresaDropdownRef.current && !empresaDropdownRef.current.contains(event.target as Node)) {
+        setEmpresaDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -113,8 +135,13 @@ export function SidebarComFunis({ empresaNome, isOpen, onClose }: SidebarProps) 
   const carregarFunis = async () => {
     setLoading(true);
     try {
-      // Carregar funis via API route (não direto do Supabase)
-      const response = await fetch('/api/funis');
+      // Carregar funis via API route com empresa_id
+      const params = new URLSearchParams();
+      if (empresaSelecionada?.id) {
+        params.set('empresa_id', empresaSelecionada.id);
+      }
+      const url = `/api/funis${params.toString() ? `?${params.toString()}` : ''}`;
+      const response = await fetch(url);
       
       if (!response.ok) {
         const error = await response.json();
@@ -226,6 +253,7 @@ export function SidebarComFunis({ empresaNome, isOpen, onClose }: SidebarProps) 
       // Limpar localStorage
       localStorage.removeItem('user-role');
       localStorage.removeItem('user-name');
+      localStorage.removeItem('empresa-selecionada-id');
       
       console.log('✅ Logout realizado com sucesso!');
       toast.success('Até logo!');
@@ -290,21 +318,87 @@ export function SidebarComFunis({ empresaNome, isOpen, onClose }: SidebarProps) 
                 ? 'text-gray-900'
                 : 'text-white bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent'
             )}>
-              Portal Empresarial
+              Portal BIG
             </p>
-            {empresaNome && (
-              <Badge className={cn(
-                "text-xs",
-                isClean
-                  ? 'bg-amber-50 text-amber-700 border-amber-200'
-                  : 'bg-gradient-to-r from-slate-700 to-slate-600 text-cyan-300 border-slate-600'
-              )}>
-                {empresaNome}
-              </Badge>
-            )}
           </div>
         </div>
       </div>
+
+      {/* Seletor de Empresa (Cliente) */}
+      {(userRole === 'admin' || userRole === 'gestor') && (
+        <div className="px-3 pt-3" ref={empresaDropdownRef}>
+          <button
+            onClick={() => setEmpresaDropdownOpen(!empresaDropdownOpen)}
+            className={cn(
+              "w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 border",
+              isClean
+                ? 'bg-amber-50/60 border-amber-200 text-amber-800 hover:bg-amber-100/80'
+                : 'bg-slate-800/60 border-slate-600/50 text-cyan-300 hover:bg-slate-700/60'
+            )}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Building2 className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate">
+                {empresaSelecionada ? empresaSelecionada.nome : 'Selecionar cliente'}
+              </span>
+            </div>
+            <ChevronDown className={cn("h-4 w-4 flex-shrink-0 transition-transform", empresaDropdownOpen && "rotate-180")} />
+          </button>
+
+          {empresaDropdownOpen && (
+            <div className={cn(
+              "mt-1 rounded-lg border shadow-lg overflow-hidden z-50",
+              isClean
+                ? 'bg-white border-gray-200'
+                : 'bg-slate-800 border-slate-600/50'
+            )}>
+              {empresas.length === 0 ? (
+                <div className={cn(
+                  "px-3 py-4 text-center text-xs",
+                  isClean ? 'text-gray-400' : 'text-slate-400'
+                )}>
+                  Nenhum cliente cadastrado.
+                  <br />
+                  <Link href="/admin" className={cn(
+                    "underline mt-1 inline-block",
+                    isClean ? 'text-amber-600' : 'text-cyan-400'
+                  )} onClick={() => { setEmpresaDropdownOpen(false); if (onClose) onClose(); }}>
+                    Criar no Painel Admin
+                  </Link>
+                </div>
+              ) : (
+                <div className="max-h-48 overflow-y-auto">
+                  {empresas.map((emp) => (
+                    <button
+                      key={emp.id}
+                      onClick={() => {
+                        selecionarEmpresa(emp);
+                        setEmpresaDropdownOpen(false);
+                      }}
+                      className={cn(
+                        "w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors",
+                        empresaSelecionada?.id === emp.id
+                          ? (isClean
+                              ? 'bg-amber-50 text-amber-800 font-medium'
+                              : 'bg-cyan-500/20 text-cyan-300 font-medium')
+                          : (isClean
+                              ? 'text-gray-700 hover:bg-gray-50'
+                              : 'text-slate-300 hover:bg-slate-700/50')
+                      )}
+                    >
+                      <Building2 className="h-3.5 w-3.5 flex-shrink-0" />
+                      <span className="truncate">{emp.nome}</span>
+                      {empresaSelecionada?.id === emp.id && (
+                        <Check className="h-3.5 w-3.5 ml-auto flex-shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Navegação */}
       <nav className="flex-1 space-y-2 px-3 py-6 overflow-y-auto">

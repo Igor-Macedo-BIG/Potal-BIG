@@ -111,6 +111,9 @@ export interface MetricasAgregadas {
   cliques: number;
   visualizacoes_pagina: number;
   leads: number;
+  leads_whatsapp: number;
+  leads_messenger: number;
+  mensagens: number;
   checkouts: number;
   vendas: number;
   investimento: number;

@@ -18,11 +18,26 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Não foi possível identificar o usuário' }, { status: 404 });
     }
 
+    // Admin pode passar empresa_id via query param para ver dados de qualquer empresa
+    const { searchParams } = new URL(request.url);
+    const empresaIdParam = searchParams.get('empresa_id');
+    const empresaId = usuario.is_admin && empresaIdParam ? empresaIdParam : usuario.empresa_id;
+
+    // Se não tem empresa selecionada, retornar vazio (admin sem empresa selecionada)
+    if (!empresaId) {
+      return NextResponse.json({
+        funis: [],
+        campanhas: [],
+        campanhasPorFunil: {},
+        resumo: { totalFunis: 0, totalCampanhas: 0 }
+      });
+    }
+
     // 1. Buscar funis da empresa
     const { data: funis, error: funisError } = await supabase
       .from('funis')
       .select('id, nome, descricao, ativo, created_at, empresa_id')
-      .eq('empresa_id', usuario.empresa_id)
+      .eq('empresa_id', empresaId)
       .order('created_at', { ascending: false });
 
     if (funisError) {
@@ -101,10 +116,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Não foi possível identificar o usuário' }, { status: 404 });
     }
 
-    const { nome, descricao } = await request.json();
+    const { nome, descricao, empresa_id: bodyEmpresaId } = await request.json();
 
     if (!nome) {
       return NextResponse.json({ error: 'Nome é obrigatório' }, { status: 400 });
+    }
+
+    // Admin pode especificar empresa_id no body
+    const empresaId = usuario.is_admin && bodyEmpresaId ? bodyEmpresaId : usuario.empresa_id;
+    if (!empresaId) {
+      return NextResponse.json({ error: 'Selecione uma empresa primeiro' }, { status: 400 });
     }
 
     // Criar funil
@@ -113,7 +134,7 @@ export async function POST(request: NextRequest) {
       .insert({
         nome,
         descricao,
-        empresa_id: usuario.empresa_id,
+        empresa_id: empresaId,
       })
       .select()
       .single();

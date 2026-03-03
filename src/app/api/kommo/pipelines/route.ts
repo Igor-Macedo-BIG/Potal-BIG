@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
-import { getOrCreateUsuario } from '@/lib/get-usuario';
+import { getOrCreateUsuario, resolveEmpresaId } from '@/lib/get-usuario';
 import { sincronizarPipelines } from '@/lib/kommo-sync';
 import type { IntegracaoKommo } from '@/types/hierarchical';
 
@@ -54,6 +54,9 @@ export async function POST(request: NextRequest) {
     const usuario = await getOrCreateUsuario(supabase, session.user.id, session.user.email || '');
     if (!usuario) return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
 
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ error: 'Selecione uma empresa' }, { status: 400 });
+
     const body = await request.json().catch(() => ({}));
     const { integracao_id } = body;
 
@@ -66,7 +69,7 @@ export async function POST(request: NextRequest) {
       .from('integracoes_kommo')
       .select('*')
       .eq('id', integracao_id)
-      .eq('empresa_id', usuario.empresa_id)
+      .eq('empresa_id', empresaId)
       .single();
 
     if (errInteg || !integracao) {

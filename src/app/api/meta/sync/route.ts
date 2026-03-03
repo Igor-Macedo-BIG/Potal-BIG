@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { syncMetaToSupabase, IntegracaoMeta } from '@/lib/meta-sync';
-import { getOrCreateUsuario } from '@/lib/get-usuario';
+import { getOrCreateUsuario, resolveEmpresaId } from '@/lib/get-usuario';
 
 // POST - Executar sincronização (uma conta específica ou todas)
 export async function POST(request: NextRequest) {
@@ -25,6 +25,9 @@ export async function POST(request: NextRequest) {
     if (!usuario) {
       return NextResponse.json({ error: 'Não foi possível identificar o usuário' }, { status: 404 });
     }
+
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ error: 'Selecione uma empresa' }, { status: 400 });
 
     const body = await request.json().catch(() => ({}));
     const {
@@ -47,7 +50,7 @@ export async function POST(request: NextRequest) {
         .from('integracoes_meta')
         .select('*')
         .eq('id', integracaoId)
-        .eq('empresa_id', usuario.empresa_id)
+        .eq('empresa_id', empresaId)
         .eq('ativo', true)
         .maybeSingle();
 
@@ -63,7 +66,7 @@ export async function POST(request: NextRequest) {
       const { data, error } = await supabase
         .from('integracoes_meta')
         .select('*')
-        .eq('empresa_id', usuario.empresa_id)
+        .eq('empresa_id', empresaId)
         .eq('ativo', true);
 
       if (error || !data || data.length === 0) {
@@ -154,6 +157,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Não foi possível identificar o usuário' }, { status: 404 });
     }
 
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ logs: [] });
+
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '10');
     const integracaoId = searchParams.get('integracaoId');
@@ -161,7 +167,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('sync_logs_meta')
       .select('*, integracoes_meta:integracao_id(ad_account_id)')
-      .eq('empresa_id', usuario.empresa_id)
+      .eq('empresa_id', empresaId)
       .order('iniciado_em', { ascending: false })
       .limit(limit);
 
@@ -177,7 +183,7 @@ export async function GET(request: NextRequest) {
       const { data: logsFallback, error: error2 } = await supabase
         .from('sync_logs_meta')
         .select('*')
-        .eq('empresa_id', usuario.empresa_id)
+        .eq('empresa_id', empresaId)
         .order('iniciado_em', { ascending: false })
         .limit(limit);
 

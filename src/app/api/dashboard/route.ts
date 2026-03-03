@@ -34,12 +34,21 @@ export async function GET(request: NextRequest) {
     if (!filtros.empresa_id) {
       const { data: usuario } = await supabase
         .from('usuarios')
-        .select('empresa_id')
+        .select('empresa_id, role')
         .eq('id', session.user.id)
         .single();
       
       if (!usuario) {
         return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+      }
+      
+      // Admin sem empresa selecionada: retornar métricas vazias
+      if (!usuario.empresa_id && (usuario.role === 'admin' || usuario.role === 'gestor')) {
+        return NextResponse.json({
+          metricas: { alcance: 0, impressoes: 0, cliques: 0, visualizacoes_pagina: 0, leads: 0, leads_whatsapp: 0, leads_messenger: 0, mensagens: 0, checkouts: 0, vendas: 0, investimento: 0, faturamento: 0, roas: 0, ctr: 0, cpm: 0, cpc: 0, cpl: 0, taxa_conversao: 0 },
+          series_tempo: [],
+          hierarquia: [],
+        });
       }
       filtros.empresa_id = usuario.empresa_id;
     }
@@ -140,6 +149,9 @@ function agregarMetricas(metricas: any[]): MetricasAgregadas {
     cliques: acc.cliques + (metrica.cliques || 0),
     visualizacoes_pagina: acc.visualizacoes_pagina + (metrica.visualizacoes_pagina || 0),
     leads: acc.leads + (metrica.leads || 0),
+    leads_whatsapp: acc.leads_whatsapp + (metrica.leads_whatsapp || 0),
+    leads_messenger: acc.leads_messenger + (metrica.leads_messenger || 0),
+    mensagens: acc.mensagens + (metrica.mensagens || 0),
     checkouts: acc.checkouts + (metrica.checkouts || 0),
     vendas: acc.vendas + (metrica.vendas || 0),
     investimento: acc.investimento + (metrica.investimento || 0),
@@ -150,11 +162,19 @@ function agregarMetricas(metricas: any[]): MetricasAgregadas {
     cliques: 0,
     visualizacoes_pagina: 0,
     leads: 0,
+    leads_whatsapp: 0,
+    leads_messenger: 0,
+    mensagens: 0,
     checkouts: 0,
     vendas: 0,
     investimento: 0,
     faturamento: 0,
   });
+
+  // Combinar tudo em WhatsApp (dados antigos podem estar em leads_messenger)
+  agregadas.leads_whatsapp = agregadas.leads_whatsapp + agregadas.leads_messenger;
+  agregadas.leads_messenger = 0;
+  agregadas.mensagens = agregadas.leads_whatsapp;
 
   // Calcular métricas derivadas
   return {
@@ -302,7 +322,7 @@ async function buscarHierarquia(supabase: any, filtros: FiltrosDashboard): Promi
 
   const { data: todasMetricas } = await supabase
     .from('metricas')
-    .select('tipo, referencia_id, alcance, impressoes, cliques, visualizacoes_pagina, leads, checkouts, vendas, investimento, faturamento, roas, ctr, cpm, cpc, cpl, taxa_conversao')
+    .select('tipo, referencia_id, alcance, impressoes, cliques, visualizacoes_pagina, leads, mensagens, checkouts, vendas, investimento, faturamento, roas, ctr, cpm, cpc, cpl, taxa_conversao')
     .in('referencia_id', todosIds)
     .in('tipo', ['campanha', 'conjunto', 'anuncio'])
     .gte('periodo_inicio', filtros.periodo_inicio)

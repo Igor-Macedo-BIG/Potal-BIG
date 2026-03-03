@@ -1,14 +1,14 @@
 /**
  * Helper para obter o usuário atual da tabela `usuarios`.
- * Se o usuário estiver autenticado mas não tiver registro na tabela,
- * cria automaticamente vinculado à primeira empresa disponível.
+ * Admin pode não ter empresa_id — ele gerencia múltiplas empresas.
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
 
 interface UsuarioInfo {
-  empresa_id: string;
+  empresa_id: string | null;
   role: string;
+  is_admin: boolean;
 }
 
 export async function getOrCreateUsuario(
@@ -23,41 +23,75 @@ export async function getOrCreateUsuario(
     .eq('id', sessionUserId)
     .single();
 
-  if (usuario?.empresa_id) {
-    return { empresa_id: usuario.empresa_id, role: usuario.role || 'admin' };
+  if (usuario) {
+    const isAdmin = usuario.role === 'admin';
+    return { 
+      empresa_id: usuario.empresa_id || null, 
+      role: usuario.role || 'admin',
+      is_admin: isAdmin
+    };
   }
 
-  // 2. Não encontrou - buscar a primeira empresa disponível
-  const { data: empresa } = await supabase
-    .from('empresas')
-    .select('id')
-    .limit(1)
+  // 2. Não encontrou em usuarios — tentar na tabela users
+  const { data: user } = await supabase
+    .from('users')
+    .select('empresa_id, role')
+    .eq('id', sessionUserId)
     .single();
 
-  if (!empresa) return null;
-
-  // 3. Auto-criar o registro do usuário
-  const { error } = await supabase
-    .from('usuarios')
-    .insert({
+  if (user) {
+    // Auto-criar na tabela usuarios baseado no users
+    await supabase.from('usuarios').upsert({
       id: sessionUserId,
       nome: sessionEmail.split('@')[0],
       email: sessionEmail,
-      empresa_id: empresa.id,
-      role: 'admin',
+      empresa_id: user.empresa_id,
+      role: user.role || 'admin',
       ativo: true
     });
 
-  if (error) {
-    // Se falhou ao criar (ex: coluna role não existe), tentar sem role
-    await supabase.from('usuarios').insert({
-      id: sessionUserId,
-      nome: sessionEmail.split('@')[0],
-      email: sessionEmail,
-      empresa_id: empresa.id,
-      ativo: true
-    });
+    const isAdmin = (user.role || 'admin') === 'admin';
+    return { 
+      empresa_id: user.empresa_id || null, 
+      role: user.role || 'admin',
+      is_admin: isAdmin
+    };
   }
 
-  return { empresa_id: empresa.id, role: 'admin' };
+  // 3. Não encontrou em nenhum lugar — criar como admin sem empresa
+  await supabase.from('usuarios').upsert({
+    id: sessionUserId,
+    nome: sessionEmail.split('@')[0],
+    email: sessionEmail,
+    role: 'admin',
+    ativo: true
+  });
+
+  await supabase.from('users').upsert({
+    id: sessionUserId,
+    nome: sessionEmail.split('@')[0],
+    email: sessionEmail,
+    role: 'admin',
+    ativo: true
+  });
+
+  return { empresa_id: null, role: 'admin', is_admin: true };
+}
+
+/**
+ * Resolve o empresa_id efetivo para uma request.
+ * Admin pode especificar via query param `empresa_id`.
+ * Usuário normal usa o empresa_id da própria conta.
+ */
+export function resolveEmpresaId(usuario: UsuarioInfo, requestUrl: string): string | null {
+  if (usuario.empresa_id) return usuario.empresa_id;
+  if (usuario.is_admin) {
+    try {
+      const { searchParams } = new URL(requestUrl);
+      return searchParams.get('empresa_id');
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }

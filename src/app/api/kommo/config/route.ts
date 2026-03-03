@@ -8,12 +8,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
-import { getOrCreateUsuario } from '@/lib/get-usuario';
+import { getOrCreateUsuario, resolveEmpresaId } from '@/lib/get-usuario';
 import { validarConexao, sincronizarPipelines } from '@/lib/kommo-sync';
 import type { IntegracaoKommo } from '@/types/hierarchical';
 
 // GET - Listar integrações
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: { session } } = await supabase.auth.getSession();
@@ -21,6 +21,9 @@ export async function GET() {
 
     const usuario = await getOrCreateUsuario(supabase, session.user.id, session.user.email || '');
     if (!usuario) return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ integracoes: [] });
 
     // Buscar integrações com pipelines vinculadas
     const { data: integracoes, error } = await supabase
@@ -30,7 +33,7 @@ export async function GET() {
         ultima_sincronizacao, erro_sincronizacao,
         created_at, updated_at
       `)
-      .eq('empresa_id', usuario.empresa_id)
+      .eq('empresa_id', empresaId)
       .order('created_at', { ascending: false });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -66,6 +69,9 @@ export async function POST(request: NextRequest) {
     const usuario = await getOrCreateUsuario(supabase, session.user.id, session.user.email || '');
     if (!usuario) return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
 
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ error: 'Selecione uma empresa' }, { status: 400 });
+
     const body = await request.json().catch(() => ({}));
     const { id, nome, subdominio, access_token, ativo, funil_id, action } = body;
 
@@ -94,7 +100,7 @@ export async function POST(request: NextRequest) {
         .from('integracoes_kommo')
         .update(updatePayload)
         .eq('id', id)
-        .eq('empresa_id', usuario.empresa_id)
+        .eq('empresa_id', empresaId)
         .select()
         .single();
 
@@ -129,7 +135,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabase
       .from('integracoes_kommo')
       .insert({
-        empresa_id: usuario.empresa_id,
+        empresa_id: empresaId,
         nome: nome || `Kommo - ${validacao.nome_conta || subdominio}`,
         subdominio,
         access_token,
@@ -166,6 +172,9 @@ export async function DELETE(request: NextRequest) {
     const usuario = await getOrCreateUsuario(supabase, session.user.id, session.user.email || '');
     if (!usuario) return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
 
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ error: 'Selecione uma empresa' }, { status: 400 });
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 });
@@ -175,7 +184,7 @@ export async function DELETE(request: NextRequest) {
       .from('integracoes_kommo')
       .delete()
       .eq('id', id)
-      .eq('empresa_id', usuario.empresa_id);
+      .eq('empresa_id', empresaId);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

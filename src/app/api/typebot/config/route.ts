@@ -8,10 +8,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
-import { getOrCreateUsuario } from '@/lib/get-usuario';
+import { getOrCreateUsuario, resolveEmpresaId } from '@/lib/get-usuario';
 
 // GET - Listar integracoes
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
 
@@ -21,6 +21,9 @@ export async function GET() {
     const usuario = await getOrCreateUsuario(supabase, session.user.id, session.user.email || '');
     if (!usuario) return NextResponse.json({ error: 'Usuario nao encontrado' }, { status: 404 });
 
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ integracoes: [] });
+
     const { data: integracoes, error } = await supabase
       .from('integracoes_typebot')
       .select(`
@@ -29,7 +32,7 @@ export async function GET() {
         ultima_sincronizacao, erro_sincronizacao,
         total_sincronizados, created_at, updated_at
       `)
-      .eq('empresa_id', usuario.empresa_id)
+      .eq('empresa_id', empresaId)
       .order('created_at', { ascending: false });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -51,6 +54,9 @@ export async function POST(request: NextRequest) {
     const usuario = await getOrCreateUsuario(supabase, session.user.id, session.user.email || '');
     if (!usuario) return NextResponse.json({ error: 'Usuario nao encontrado' }, { status: 404 });
 
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ error: 'Selecione uma empresa' }, { status: 400 });
+
     const body = await request.json().catch(() => ({}));
     const { id, nome, typebot_id, api_token, ativo, variavel_nome, variavel_email, base_url, funil_id } = body;
 
@@ -69,7 +75,7 @@ export async function POST(request: NextRequest) {
         .from('integracoes_typebot')
         .update(updatePayload)
         .eq('id', id)
-        .eq('empresa_id', usuario.empresa_id)
+        .eq('empresa_id', empresaId)
         .select()
         .single();
 
@@ -86,7 +92,7 @@ export async function POST(request: NextRequest) {
       const { data, error } = await supabase
         .from('integracoes_typebot')
         .insert({
-          empresa_id: usuario.empresa_id,
+          empresa_id: empresaId,
           nome: nome || 'Typebot Principal',
           typebot_id,
           api_token,
@@ -118,6 +124,9 @@ export async function DELETE(request: NextRequest) {
     const usuario = await getOrCreateUsuario(supabase, session.user.id, session.user.email || '');
     if (!usuario) return NextResponse.json({ error: 'Usuario nao encontrado' }, { status: 404 });
 
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ error: 'Selecione uma empresa' }, { status: 400 });
+
     const { searchParams } = new URL(request.url);
     const integracaoId = searchParams.get('id');
 
@@ -129,7 +138,7 @@ export async function DELETE(request: NextRequest) {
       .from('integracoes_typebot')
       .delete()
       .eq('id', integracaoId)
-      .eq('empresa_id', usuario.empresa_id);
+      .eq('empresa_id', empresaId);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });

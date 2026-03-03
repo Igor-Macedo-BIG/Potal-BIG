@@ -565,3 +565,39 @@ export function extractPageViewsFromActions(actions?: MetaInsight['actions']): n
   
   return viewAction ? parseInt(viewAction.value, 10) : 0;
 }
+
+/**
+ * Extrai leads de WhatsApp — conversas efetivamente iniciadas
+ * Combina ambas as action_types, pois todas as conversas são via WhatsApp:
+ * - messaging_conversation_started_7d (off-platform)
+ * - onsite_conversion.messaging_conversation_started_7d (on-platform)
+ */
+export function extractWhatsAppLeadsFromActions(actions?: MetaInsight['actions']): number {
+  if (!actions) return 0;
+  let total = 0;
+  for (const a of actions) {
+    if (
+      a.action_type === 'messaging_conversation_started_7d' ||
+      a.action_type === 'onsite_conversion.messaging_conversation_started_7d'
+    ) {
+      total += parseInt(a.value, 10) || 0;
+    }
+  }
+  return total;
+}
+
+/**
+ * Extrai leads de Messenger/Instagram — reservado para uso futuro.
+ * Atualmente retorna 0, pois todas as conversas são via WhatsApp.
+ */
+export function extractMessengerLeadsFromActions(actions?: MetaInsight['actions']): number {
+  return 0;
+}
+
+/**
+ * Total de mensagens/conversas iniciadas (WhatsApp + Messenger/Instagram)
+ * Mantido para retrocompatibilidade — soma das duas fontes
+ */
+export function extractMessagesFromActions(actions?: MetaInsight['actions']): number {
+  return extractWhatsAppLeadsFromActions(actions) + extractMessengerLeadsFromActions(actions);
+}

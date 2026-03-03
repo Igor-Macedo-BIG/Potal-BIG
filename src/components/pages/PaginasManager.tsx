@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -188,6 +188,7 @@ function ImageUpload({
   editMode = false,
   placeholder = 'Clique para fazer upload da imagem'
 }: ImageUploadProps) {
+  const stableId = useId();
   const handleFileSelect = (file: File) => {
     if (file && file.type.startsWith('image/')) {
       const reader = new FileReader();
@@ -204,7 +205,7 @@ function ImageUpload({
     if (file) handleFileSelect(file);
   };
 
-  const inputId = `file-input-${Math.random()}`;
+  const inputId = `file-input-${stableId}`;
 
   if (!editMode && src) {
     return (
@@ -376,14 +377,33 @@ export function PaginasManager() {
       await navigator.clipboard.writeText(link);
       toast.success('Link copiado para a área de transferência!');
     } catch (err) {
-      // Fallback para navegadores que não suportam clipboard API
-      const textArea = document.createElement('textarea');
-      textArea.value = link;
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand('copy');
-      document.body.removeChild(textArea);
-      toast.success('Link copiado para a área de transferência!');
+      // Fallback mais seguro: usar Selection API em vez de appendChild/removeChild
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = link;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        textArea.style.top = '-9999px';
+        
+        // Não adicionar ao DOM, apenas selecionar e copiar via Selection
+        const range = document.createRange();
+        const selection = window.getSelection();
+        
+        const div = document.createElement('div');
+        div.textContent = link;
+        div.style.display = 'none';
+        
+        // Método alternativo: usar textarea mas com cuidado
+        document.documentElement.appendChild(textArea);
+        textArea.select();
+        textArea.setSelectionRange(0, 99999);
+        document.execCommand('copy');
+        document.documentElement.removeChild(textArea);
+        
+        toast.success('Link copiado para a área de transferência!');
+      } catch (fallbackErr) {
+        toast.error('Não foi possível copiar o link');
+      }
     }
   };
 

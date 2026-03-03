@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
-import { getOrCreateUsuario } from '@/lib/get-usuario';
+import { getOrCreateUsuario, resolveEmpresaId } from '@/lib/get-usuario';
 
 // Métricas padrão por departamento
 const METRICAS_PADRAO: Record<string, Array<{
@@ -54,11 +54,13 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const departamento = searchParams.get('departamento'); // 'sdr' | 'closer' | null (ambos)
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ configs: [], defaults: METRICAS_PADRAO });
 
     let query = supabase
       .from('dashboard_metricas_config')
       .select('*')
-      .eq('empresa_id', usuario.empresa_id)
+      .eq('empresa_id', empresaId)
       .order('ordem', { ascending: true });
 
     if (departamento) {
@@ -90,6 +92,8 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}));
     const { action, departamento, configs } = body;
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ error: 'Selecione uma empresa' }, { status: 400 });
 
     // ---- SEED: criar configs padrão ----
     if (action === 'seed') {
@@ -105,7 +109,7 @@ export async function POST(request: NextRequest) {
             .from('dashboard_metricas_config')
             .upsert(
               {
-                empresa_id: usuario.empresa_id,
+                empresa_id: empresaId,
                 departamento: dept,
                 metrica_key: def.metrica_key,
                 nome_original: def.nome_original,
@@ -138,7 +142,7 @@ export async function POST(request: NextRequest) {
           .from('dashboard_metricas_config')
           .upsert(
             {
-              empresa_id: usuario.empresa_id,
+              empresa_id: empresaId,
               departamento: config.departamento,
               metrica_key: config.metrica_key,
               nome_original: config.nome_original || config.metrica_key,
@@ -179,6 +183,8 @@ export async function PUT(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}));
     const { id, nome_display, descricao, visivel, ordem } = body;
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ error: 'Selecione uma empresa' }, { status: 400 });
 
     if (!id) return NextResponse.json({ error: 'id é obrigatório' }, { status: 400 });
 
@@ -192,7 +198,7 @@ export async function PUT(request: NextRequest) {
       .from('dashboard_metricas_config')
       .update(updates)
       .eq('id', id)
-      .eq('empresa_id', usuario.empresa_id);
+      .eq('empresa_id', empresaId);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

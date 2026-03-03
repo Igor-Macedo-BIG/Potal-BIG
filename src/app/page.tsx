@@ -42,11 +42,8 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    // Buscar informações da empresa do usuário logado
     if (session?.user) {
-      // Aqui você faria a busca da empresa no banco de dados
-      // Por enquanto, vamos usar um valor de exemplo
-      setEmpresa('Lídia Cabral Consultoria')
+      setEmpresa('Portal BIG')
     }
   }, [session])
 

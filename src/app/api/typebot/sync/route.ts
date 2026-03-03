@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { syncTypebotToSupabase, IntegracaoTypebot } from '@/lib/typebot-sync';
-import { getOrCreateUsuario } from '@/lib/get-usuario';
+import { getOrCreateUsuario, resolveEmpresaId } from '@/lib/get-usuario';
 
 // POST - Executar sincronização
 export async function POST(request: NextRequest) {
@@ -26,6 +26,9 @@ export async function POST(request: NextRequest) {
     if (!usuario) {
       return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
     }
+
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ error: 'Selecione uma empresa' }, { status: 400 });
 
     const body = await request.json().catch(() => ({}));
     const { integracaoId, dataInicio, dataFim } = body;
@@ -45,7 +48,7 @@ export async function POST(request: NextRequest) {
         .from('integracoes_typebot')
         .select('*')
         .eq('id', integracaoId)
-        .eq('empresa_id', usuario.empresa_id)
+        .eq('empresa_id', empresaId)
         .eq('ativo', true)
         .single();
 
@@ -57,7 +60,7 @@ export async function POST(request: NextRequest) {
       const { data, error } = await supabase
         .from('integracoes_typebot')
         .select('*')
-        .eq('empresa_id', usuario.empresa_id)
+        .eq('empresa_id', empresaId)
         .eq('ativo', true);
 
       if (error) {
@@ -81,7 +84,7 @@ export async function POST(request: NextRequest) {
       const { data: logInserido } = await supabase
         .from('sync_logs_typebot')
         .insert({
-          empresa_id: usuario.empresa_id,
+          empresa_id: empresaId,
           integracao_id: integracao.id,
           status: 'running',
           periodo_inicio: dataInicio,
@@ -166,6 +169,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
     }
 
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ logs: [] });
+
     const { searchParams } = new URL(request.url);
     const integracaoId = searchParams.get('integracaoId');
     const limit = parseInt(searchParams.get('limit') || '20');
@@ -185,7 +191,7 @@ export async function GET(request: NextRequest) {
         iniciado_em,
         finalizado_em
       `)
-      .eq('empresa_id', usuario.empresa_id)
+      .eq('empresa_id', empresaId)
       .order('iniciado_em', { ascending: false })
       .limit(limit);
 

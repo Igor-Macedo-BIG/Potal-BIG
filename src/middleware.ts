@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 // Rotas que não precisam de autenticação
-const publicRoutes = ['/login'];
+const publicRoutes = ['/login', '/relatorio'];
 
 // Mapeamento de roles para suas rotas permitidas
 const roleRoutes: Record<string, string[]> = {

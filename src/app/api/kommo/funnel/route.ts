@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
-import { getOrCreateUsuario } from '@/lib/get-usuario';
+import { getOrCreateUsuario, resolveEmpresaId } from '@/lib/get-usuario';
 
 // GET - Dados do funil
 export async function GET(request: NextRequest) {
@@ -18,6 +18,9 @@ export async function GET(request: NextRequest) {
 
     const usuario = await getOrCreateUsuario(supabase, session.user.id, session.user.email || '');
     if (!usuario) return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ funil: [], resumo: {} });
 
     const { searchParams } = new URL(request.url);
     const pipelineId = searchParams.get('pipeline_id');        // UUID do kommo_pipelines
@@ -40,7 +43,7 @@ export async function GET(request: NextRequest) {
       const { data: integracoes } = await supabase
         .from('integracoes_kommo')
         .select('id')
-        .eq('empresa_id', usuario.empresa_id)
+        .eq('empresa_id', empresaId)
         .eq('ativo', true);
 
       if (!integracoes || integracoes.length === 0) {

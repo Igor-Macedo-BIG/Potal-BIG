@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
-import { getOrCreateUsuario } from '@/lib/get-usuario';
+import { getOrCreateUsuario, resolveEmpresaId } from '@/lib/get-usuario';
 
 // GET - Listar campanhas sincronizadas da Meta
 export async function GET(request: NextRequest) {
@@ -26,11 +26,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Não foi possível identificar o usuário' }, { status: 404 });
     }
 
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ campanhas: [], campanhasNaoVinculadas: [], funisDisponiveis: [], resumo: { totalCampanhas: 0, campanhasVinculadas: 0, campanhasNaoVinculadas: 0 } });
+
     // Buscar TODAS as campanhas com meta_id (sincronizadas da Meta) para esta empresa
     const { data: campanhas, error: campanhasError } = await supabase
       .from('campanhas')
       .select('id, nome, meta_id, plataforma, ativo, funil_id, created_at')
-      .eq('empresa_id', usuario.empresa_id)
+      .eq('empresa_id', empresaId)
       .not('meta_id', 'is', null)
       .order('created_at', { ascending: false });
 
@@ -61,7 +64,7 @@ export async function GET(request: NextRequest) {
     const { data: funisDisponiveis, error: funisError } = await supabase
       .from('funis')
       .select('id, nome')
-      .eq('empresa_id', usuario.empresa_id)
+      .eq('empresa_id', empresaId)
       .order('nome');
 
     if (funisError) {
@@ -128,6 +131,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Não foi possível identificar o usuário' }, { status: 404 });
     }
 
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ error: 'Selecione uma empresa' }, { status: 400 });
+
     const body = await request.json();
     const { campanhaId, campanhaIds, funilId, vincularTodas } = body;
 
@@ -143,7 +149,7 @@ export async function POST(request: NextRequest) {
       .from('funis')
       .select('id, empresa_id')
       .eq('id', funilId)
-      .eq('empresa_id', usuario.empresa_id)
+      .eq('empresa_id', empresaId)
       .single();
 
     if (funilError || !funil) {
@@ -163,7 +169,7 @@ export async function POST(request: NextRequest) {
       const { error, count } = await supabase
         .from('campanhas')
         .update(updatePayload)
-        .eq('empresa_id', usuario.empresa_id)
+        .eq('empresa_id', empresaId)
         .is('funil_id', null)
         .not('meta_id', 'is', null);
 
@@ -184,7 +190,7 @@ export async function POST(request: NextRequest) {
         .from('campanhas')
         .update(updatePayload)
         .in('id', campanhaIds)
-        .eq('empresa_id', usuario.empresa_id);
+        .eq('empresa_id', empresaId);
 
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
@@ -209,7 +215,7 @@ export async function POST(request: NextRequest) {
       .from('campanhas')
       .update(updatePayload)
       .eq('id', campanhaId)
-      .eq('empresa_id', usuario.empresa_id);
+      .eq('empresa_id', empresaId);
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

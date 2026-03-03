@@ -14,16 +14,25 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const funilId = searchParams.get('funil_id');
+    const empresaIdParam = searchParams.get('empresa_id');
 
     // Obter empresa do usuário
     const { data: usuario } = await supabase
       .from('usuarios')
-      .select('empresa_id')
+      .select('empresa_id, role')
       .eq('id', session.user.id)
       .single();
 
     if (!usuario) {
       return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+
+    // Admin pode ver qualquer empresa
+    const isAdmin = usuario.role === 'admin' || usuario.role === 'gestor';
+    const empresaIdFinal = isAdmin && empresaIdParam ? empresaIdParam : usuario.empresa_id;
+    
+    if (!empresaIdFinal) {
+      return NextResponse.json([]);
     }
 
     // Query base
@@ -64,9 +73,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Erro ao buscar campanhas' }, { status: 500 });
     }
 
-    // Filtrar apenas campanhas da empresa do usuário
+    // Filtrar apenas campanhas da empresa
     const campanhasFiltradas = campanhas?.filter(
-      campanha => (campanha.funil as any)?.empresa_id === usuario.empresa_id
+      campanha => (campanha.funil as any)?.empresa_id === empresaIdFinal
     );
 
     return NextResponse.json(campanhasFiltradas);
@@ -94,13 +103,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Verificar se o funil pertence à empresa do usuário
-    const { data: usuario } = await supabase
+    const { data: usuarioPost } = await supabase
       .from('usuarios')
-      .select('empresa_id')
+      .select('empresa_id, role')
       .eq('id', session.user.id)
       .single();
 
-    if (!usuario) {
+    if (!usuarioPost) {
       return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
     }
 
@@ -110,7 +119,8 @@ export async function POST(request: NextRequest) {
       .eq('id', funil_id)
       .single();
 
-    if (!funil || funil.empresa_id !== usuario.empresa_id) {
+    const isAdminPost = usuarioPost.role === 'admin' || usuarioPost.role === 'gestor';
+    if (!funil || (!isAdminPost && funil.empresa_id !== usuarioPost.empresa_id)) {
       return NextResponse.json({ error: 'Funil não encontrado ou sem permissão' }, { status: 403 });
     }
 

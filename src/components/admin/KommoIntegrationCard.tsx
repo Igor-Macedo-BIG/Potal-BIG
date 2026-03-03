@@ -99,7 +99,7 @@ interface SyncLog {
 // Componente Principal
 // ============================================
 
-export function KommoIntegrationCard() {
+export function KommoIntegrationCard({ empresaId }: { empresaId?: string }) {
   const { isClean } = useTheme();
   const [integracoes, setIntegracoes] = useState<IntegracaoKommo[]>([]);
   const [funis, setFunis] = useState<FunilOption[]>([]);
@@ -134,9 +134,15 @@ export function KommoIntegrationCard() {
   const [salvandoMetricaConfig, setSalvandoMetricaConfig] = useState(false);
   const [showMetricasConfig, setShowMetricasConfig] = useState(false);
 
+  const buildUrl = useCallback((path: string) => {
+    if (!empresaId) return path;
+    const sep = path.includes('?') ? '&' : '?';
+    return `${path}${sep}empresa_id=${empresaId}`;
+  }, [empresaId]);
+
   const carregarIntegracoes = useCallback(async () => {
     try {
-      const res = await fetch('/api/kommo/config');
+      const res = await fetch(buildUrl('/api/kommo/config'));
       if (!res.ok) throw new Error('Erro ao carregar');
       const data = await res.json();
       setIntegracoes(data.integracoes || []);
@@ -145,18 +151,18 @@ export function KommoIntegrationCard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [buildUrl]);
 
   const carregarFunis = useCallback(async () => {
     try {
-      const res = await fetch('/api/funis');
+      const res = await fetch(buildUrl('/api/funis'));
       if (!res.ok) return;
       const data = await res.json();
       setFunis((data.funis || []).map((f: any) => ({ id: f.id, nome: f.nome })));
     } catch (error) {
       console.error('Erro ao carregar funis:', error);
     }
-  }, []);
+  }, [buildUrl]);
 
   useEffect(() => {
     carregarIntegracoes();
@@ -172,7 +178,7 @@ export function KommoIntegrationCard() {
     setTestando(true);
     setTesteResult(null);
     try {
-      const res = await fetch('/api/kommo/config', {
+      const res = await fetch(buildUrl('/api/kommo/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -205,7 +211,7 @@ export function KommoIntegrationCard() {
       return;
     }
     try {
-      const res = await fetch('/api/kommo/config', {
+      const res = await fetch(buildUrl('/api/kommo/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(novaIntegracao),
@@ -229,7 +235,7 @@ export function KommoIntegrationCard() {
   // ---- Toggle ativo ----
   const toggleAtivo = async (integ: IntegracaoKommo) => {
     try {
-      await fetch('/api/kommo/config', {
+      await fetch(buildUrl('/api/kommo/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: integ.id, ativo: !integ.ativo }),
@@ -245,7 +251,7 @@ export function KommoIntegrationCard() {
   const removerIntegracao = async (id: string) => {
     if (!confirm('Remover integração Kommo? Snapshots e logs serão excluídos.')) return;
     try {
-      const res = await fetch(`/api/kommo/config?id=${id}`, { method: 'DELETE' });
+      const res = await fetch(buildUrl(`/api/kommo/config?id=${id}`), { method: 'DELETE' });
       if (!res.ok) throw new Error('Erro ao remover');
       toast.success('Integração removida');
       carregarIntegracoes();
@@ -257,7 +263,7 @@ export function KommoIntegrationCard() {
   // ---- Re-sync pipelines ----
   const resyncPipelines = async (integId: string) => {
     try {
-      const res = await fetch('/api/kommo/pipelines', {
+      const res = await fetch(buildUrl('/api/kommo/pipelines'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ integracao_id: integId }),
@@ -275,7 +281,7 @@ export function KommoIntegrationCard() {
   const sincronizarLeads = async (integId: string, pipelineId?: string) => {
     setSincronizandoId(integId);
     try {
-      const res = await fetch('/api/kommo/sync', {
+      const res = await fetch(buildUrl('/api/kommo/sync'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -306,7 +312,7 @@ export function KommoIntegrationCard() {
   const carregarLogs = async (integId: string) => {
     setLogsLoading(true);
     try {
-      const res = await fetch(`/api/kommo/sync?integracao_id=${integId}&limit=10`);
+      const res = await fetch(buildUrl(`/api/kommo/sync?integracao_id=${integId}&limit=10`));
       if (!res.ok) throw new Error('Erro');
       const data = await res.json();
       setLogs(data.logs || []);
@@ -332,7 +338,7 @@ export function KommoIntegrationCard() {
     setMetricasConfigLoading(true);
     try {
       const d = dept || metricasConfigDept;
-      const res = await fetch(`/api/dashboard/metricas-config?departamento=${d}`);
+      const res = await fetch(buildUrl(`/api/dashboard/metricas-config?departamento=${d}`));
       if (!res.ok) throw new Error('Erro');
       const data = await res.json();
       setMetricasConfig(data.configs || []);
@@ -346,7 +352,7 @@ export function KommoIntegrationCard() {
   const seedMetricasConfig = async () => {
     setMetricasConfigLoading(true);
     try {
-      const res = await fetch('/api/dashboard/metricas-config', {
+      const res = await fetch(buildUrl('/api/dashboard/metricas-config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'seed' }),
@@ -364,7 +370,7 @@ export function KommoIntegrationCard() {
 
   const toggleMetricaVisivel = async (config: any) => {
     try {
-      const res = await fetch('/api/dashboard/metricas-config', {
+      const res = await fetch(buildUrl('/api/dashboard/metricas-config'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: config.id, visivel: !config.visivel }),
@@ -379,7 +385,7 @@ export function KommoIntegrationCard() {
   const salvarEditMetrica = async (configId: string) => {
     setSalvandoMetricaConfig(true);
     try {
-      const res = await fetch('/api/dashboard/metricas-config', {
+      const res = await fetch(buildUrl('/api/dashboard/metricas-config'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -427,7 +433,7 @@ export function KommoIntegrationCard() {
   const salvarMapeamento = async (pipelineId: string) => {
     setSalvandoMapeamento(true);
     try {
-      const res = await fetch('/api/kommo/pipelines', {
+      const res = await fetch(buildUrl('/api/kommo/pipelines'), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,7 +1,8 @@
 ﻿'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useEmpresa } from '@/contexts/EmpresaContext';
 import type { Campanha, MetricasAgregadas } from '@/types/hierarchical';
 
 export interface FiltroData {
@@ -42,6 +43,8 @@ interface CampanhaProviderProps {
 }
 
 export function CampanhaProvider({ children }: CampanhaProviderProps) {
+  const { empresaSelecionada } = useEmpresa();
+  const empresaIdRef = useRef<string | null>(null);
   const [campanhaAtiva, setCampanhaAtiva] = useState<Campanha | null>(null);
   const [metricasCampanha, setMetricasCampanha] = useState<MetricasAgregadas | null>(null);
   const [metricasGerais, setMetricasGerais] = useState<MetricasAgregadas | null>(null);
@@ -81,23 +84,31 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
     metricas.roas = metricas.investimento > 0 ? parseFloat((metricas.faturamento / metricas.investimento).toFixed(2)) : 0;
   };
   
-  // Filtro padrão: carregar de localStorage se disponível, senão usar mês atual
-  const [filtroData, setFiltroData] = useState<FiltroData>(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const raw = localStorage.getItem('filtroData');
-        if (raw) return JSON.parse(raw) as FiltroData;
-      }
-    } catch (err) {
-      // ignore parse errors
-    }
+  // Filtro padrão: sempre inicia com valor determinístico (sem localStorage no init)
+  const getDefaultFiltro = (): FiltroData => {
     const hoje = new Date().toISOString().split('T')[0];
     return {
       tipo: 'mes',
       dataInicio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
       dataFim: hoje
     };
-  });
+  };
+  const [filtroData, setFiltroData] = useState<FiltroData>(getDefaultFiltro);
+
+  // Hidratar filtro do localStorage apenas no client (evita hydration mismatch)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('filtroData');
+      if (raw) {
+        const parsed = JSON.parse(raw) as FiltroData;
+        if (parsed && parsed.dataInicio && parsed.dataFim) {
+          setFiltroData(parsed);
+        }
+      }
+    } catch (err) {
+      // ignore parse errors
+    }
+  }, []);
 
   // Carregar campanha ativa do localStorage se existir
   useEffect(() => {
@@ -142,6 +153,23 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
       buscarMetricasGerais();
     }
   }, []);
+
+  // Recarregar métricas quando empresa muda
+  useEffect(() => {
+    const novaEmpresa = empresaSelecionada?.id || null;
+    if (empresaIdRef.current !== novaEmpresa) {
+      empresaIdRef.current = novaEmpresa;
+      // Limpar dados antigos e recarregar
+      setMetricasCampanha(null);
+      setMetricasGerais(null);
+      setCampanhaAtiva(null);
+      setFiltroHierarquico(null);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('campanhaAtivaId');
+      }
+      buscarMetricasGerais();
+    }
+  }, [empresaSelecionada?.id]);
 
   const buscarMetricasCampanha = async (campanhaId: string, filtro?: FiltroData) => {
     setLoading(true);
@@ -190,6 +218,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           cliques: 0,
           visualizacoes_pagina: 0,
           leads: 0,
+          leads_whatsapp: 0,
+          leads_messenger: 0,
+          mensagens: 0,
           checkouts: 0,
           vendas: 0,
           investimento: 0,
@@ -217,6 +248,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
             cliques: toNumber(exata.cliques),
             visualizacoes_pagina: toNumber(exata.visualizacoes_pagina),
             leads: toNumber(exata.leads),
+            leads_whatsapp: toNumber(exata.leads_whatsapp),
+            leads_messenger: toNumber(exata.leads_messenger),
+            mensagens: toNumber(exata.mensagens),
             checkouts: toNumber(exata.checkouts),
             vendas: toNumber(exata.vendas),
             investimento: toNumber(exata.investimento),
@@ -235,6 +269,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           metricas.ctr = metricas.impressoes > 0 ? parseFloat(((metricas.cliques / metricas.impressoes) * 100).toFixed(2)) : 0;
           metricas.cpm = metricas.impressoes > 0 ? parseFloat(((metricas.investimento / metricas.impressoes) * 1000).toFixed(2)) : 0;
           metricas.cpc = metricas.cliques > 0 ? parseFloat((metricas.investimento / metricas.cliques).toFixed(2)) : 0;
+          metricas.leads_whatsapp = metricas.leads_whatsapp + metricas.leads_messenger;
+          metricas.leads_messenger = 0;
+          metricas.mensagens = metricas.leads_whatsapp;
           metricas.cpl = metricas.leads > 0 ? parseFloat((metricas.investimento / metricas.leads).toFixed(2)) : 0;
           metricas.taxa_conversao = metricas.leads > 0 ? parseFloat(((metricas.vendas / metricas.leads) * 100).toFixed(2)) : 0;
 
@@ -247,6 +284,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
             cliques: acc.cliques + toNumber(m.cliques),
             visualizacoes_pagina: acc.visualizacoes_pagina + toNumber(m.visualizacoes_pagina),
             leads: acc.leads + toNumber(m.leads),
+            leads_whatsapp: acc.leads_whatsapp + toNumber(m.leads_whatsapp),
+            leads_messenger: acc.leads_messenger + toNumber(m.leads_messenger),
+            mensagens: acc.mensagens + toNumber(m.mensagens),
             checkouts: acc.checkouts + toNumber(m.checkouts),
             vendas: acc.vendas + toNumber(m.vendas),
             investimento: acc.investimento + toNumber(m.investimento),
@@ -263,6 +303,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
             cliques: 0,
             visualizacoes_pagina: 0,
             leads: 0,
+            leads_whatsapp: 0,
+            leads_messenger: 0,
+            mensagens: 0,
             checkouts: 0,
             vendas: 0,
             investimento: 0,
@@ -277,6 +320,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
 
           // Enriquecer com faturamento do Kommo (filtrado pelo funil da campanha)
           await enriquecerComFaturamentoKommo(metricas, filtroAtual, campanhaFunilId);
+          metricas.leads_whatsapp = metricas.leads_whatsapp + metricas.leads_messenger;
+          metricas.leads_messenger = 0;
+          metricas.mensagens = metricas.leads_whatsapp;
           metricas.ctr = metricas.impressoes > 0 ? parseFloat(((metricas.cliques / metricas.impressoes) * 100).toFixed(2)) : 0;
           metricas.cpm = metricas.impressoes > 0 ? parseFloat(((metricas.investimento / metricas.impressoes) * 1000).toFixed(2)) : 0;
           metricas.cpc = metricas.cliques > 0 ? parseFloat((metricas.investimento / metricas.cliques).toFixed(2)) : 0;
@@ -300,8 +346,10 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
   const buscarMetricasGerais = async (filtro?: FiltroData) => {
     setLoading(true);
     const filtroAtual = filtro || filtroData;
+    const empId = empresaSelecionada?.id;
 
     console.log('🔍 Buscando métricas gerais:', {
+      empresaId: empId,
       filtroAtual,
       query: {
         periodo_inicio_gte: filtroAtual.dataInicio,
@@ -310,14 +358,42 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
     });
 
     try {
+      // Primeiro buscar as campanhas da empresa para filtrar métricas corretamente
+      let campanhaIdsEmpresa: string[] = [];
+      if (empId) {
+        const { data: campanhasEmpresa } = await supabase
+          .from('campanhas')
+          .select('id')
+          .eq('empresa_id', empId);
+        campanhaIdsEmpresa = (campanhasEmpresa || []).map(c => c.id);
+      }
+
+      if (empId && campanhaIdsEmpresa.length === 0) {
+        // Empresa selecionada mas sem campanhas: exibir zeros
+        console.log('⚠️ Nenhuma campanha encontrada para empresa:', empId);
+        setMetricasGerais({
+          alcance: 0, impressoes: 0, cliques: 0, visualizacoes_pagina: 0,
+          leads: 0, leads_whatsapp: 0, leads_messenger: 0, mensagens: 0, checkouts: 0, vendas: 0, investimento: 0, faturamento: 0,
+          roas: 0, ctr: 0, cpm: 0, cpc: 0, cpl: 0, taxa_conversao: 0
+        });
+        setLoading(false);
+        return;
+      }
+
       // Buscar APENAS métricas de campanha — elas já contêm os totais de adsets/ads
-      // NÃO somar conjunto/anuncio pois seria dupla/tripla contagem
-      const { data: metricasArray, error } = await supabase
+      let query = supabase
         .from('metricas')
         .select('*')
         .eq('tipo', 'campanha')
         .gte('periodo_inicio', filtroAtual.dataInicio)
         .lte('periodo_inicio', filtroAtual.dataFim);
+
+      // Filtrar por campanhas da empresa quando disponível
+      if (campanhaIdsEmpresa.length > 0) {
+        query = query.in('referencia_id', campanhaIdsEmpresa);
+      }
+
+      const { data: metricasArray, error } = await query;
 
       console.log('📊 Métricas gerais (tipo=campanha):', {
         total: metricasArray?.length || 0,
@@ -342,6 +418,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           cliques: 0,
           visualizacoes_pagina: 0,
           leads: 0,
+          leads_whatsapp: 0,
+          leads_messenger: 0,
+          mensagens: 0,
           checkouts: 0,
           vendas: 0,
           investimento: 0,
@@ -373,6 +452,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           cliques: acc.cliques + toNumber(m.cliques),
           visualizacoes_pagina: acc.visualizacoes_pagina + toNumber(m.visualizacoes_pagina),
           leads: acc.leads + toNumber(m.leads),
+          leads_whatsapp: acc.leads_whatsapp + toNumber(m.leads_whatsapp),
+          leads_messenger: acc.leads_messenger + toNumber(m.leads_messenger),
+          mensagens: acc.mensagens + toNumber(m.mensagens),
           checkouts: acc.checkouts + toNumber(m.checkouts),
           vendas: acc.vendas + toNumber(m.vendas),
           investimento: acc.investimento + toNumber(m.investimento),
@@ -389,6 +471,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           cliques: 0,
           visualizacoes_pagina: 0,
           leads: 0,
+          leads_whatsapp: 0,
+          leads_messenger: 0,
+          mensagens: 0,
           checkouts: 0,
           vendas: 0,
           investimento: 0,
@@ -403,6 +488,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
 
         // Enriquecer com faturamento do Kommo + recalcular derivadas
         await enriquecerComFaturamentoKommo(metricas, filtroAtual);
+        metricas.leads_whatsapp = metricas.leads_whatsapp + metricas.leads_messenger;
+        metricas.leads_messenger = 0;
+        metricas.mensagens = metricas.leads_whatsapp;
         metricas.ctr = metricas.impressoes > 0 ? parseFloat(((metricas.cliques / metricas.impressoes) * 100).toFixed(2)) : 0;
         metricas.cpm = metricas.impressoes > 0 ? parseFloat(((metricas.investimento / metricas.impressoes) * 1000).toFixed(2)) : 0;
         metricas.cpc = metricas.cliques > 0 ? parseFloat((metricas.investimento / metricas.cliques).toFixed(2)) : 0;
@@ -549,6 +637,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           cliques: 0,
           visualizacoes_pagina: 0,
           leads: 0,
+          leads_whatsapp: 0,
+          leads_messenger: 0,
+          mensagens: 0,
           checkouts: 0,
           vendas: 0,
           investimento: 0,
@@ -594,6 +685,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           cliques: 0,
           visualizacoes_pagina: 0,
           leads: 0,
+          leads_whatsapp: 0,
+          leads_messenger: 0,
+          mensagens: 0,
           checkouts: 0,
           vendas: 0,
           investimento: 0,
@@ -615,6 +709,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           cliques: acc.cliques + toNumber(m.cliques),
           visualizacoes_pagina: acc.visualizacoes_pagina + toNumber(m.visualizacoes_pagina),
           leads: acc.leads + toNumber(m.leads),
+          leads_whatsapp: acc.leads_whatsapp + toNumber(m.leads_whatsapp),
+          leads_messenger: acc.leads_messenger + toNumber(m.leads_messenger),
+          mensagens: acc.mensagens + toNumber(m.mensagens),
           checkouts: acc.checkouts + toNumber(m.checkouts),
           vendas: acc.vendas + toNumber(m.vendas),
           investimento: acc.investimento + toNumber(m.investimento),
@@ -631,6 +728,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           cliques: 0,
           visualizacoes_pagina: 0,
           leads: 0,
+          leads_whatsapp: 0,
+          leads_messenger: 0,
+          mensagens: 0,
           checkouts: 0,
           vendas: 0,
           investimento: 0,
@@ -645,6 +745,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
 
         // Enriquecer com faturamento do Kommo (filtrado por este funil específico)
         await enriquecerComFaturamentoKommo(metricas, filtroAtual, funilId);
+        metricas.leads_whatsapp = metricas.leads_whatsapp + metricas.leads_messenger;
+        metricas.leads_messenger = 0;
+        metricas.mensagens = metricas.leads_whatsapp;
         metricas.ctr = metricas.impressoes > 0 ? parseFloat(((metricas.cliques / metricas.impressoes) * 100).toFixed(2)) : 0;
         metricas.cpm = metricas.impressoes > 0 ? parseFloat(((metricas.investimento / metricas.impressoes) * 1000).toFixed(2)) : 0;
         metricas.cpc = metricas.cliques > 0 ? parseFloat((metricas.investimento / metricas.cliques).toFixed(2)) : 0;
@@ -696,6 +799,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           cliques: 0,
           visualizacoes_pagina: 0,
           leads: 0,
+          leads_whatsapp: 0,
+          leads_messenger: 0,
+          mensagens: 0,
           checkouts: 0,
           vendas: 0,
           investimento: 0,
@@ -720,6 +826,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           cliques: 0,
           visualizacoes_pagina: 0,
           leads: 0,
+          leads_whatsapp: 0,
+          leads_messenger: 0,
+          mensagens: 0,
           checkouts: 0,
           vendas: 0,
           investimento: 0,
@@ -741,6 +850,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           cliques: acc.cliques + toNumber(m.cliques),
           visualizacoes_pagina: acc.visualizacoes_pagina + toNumber(m.visualizacoes_pagina),
           leads: acc.leads + toNumber(m.leads),
+          leads_whatsapp: acc.leads_whatsapp + toNumber(m.leads_whatsapp),
+          leads_messenger: acc.leads_messenger + toNumber(m.leads_messenger),
+          mensagens: acc.mensagens + toNumber(m.mensagens),
           checkouts: acc.checkouts + toNumber(m.checkouts),
           vendas: acc.vendas + toNumber(m.vendas),
           investimento: acc.investimento + toNumber(m.investimento),
@@ -757,6 +869,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           cliques: 0,
           visualizacoes_pagina: 0,
           leads: 0,
+          leads_whatsapp: 0,
+          leads_messenger: 0,
+          mensagens: 0,
           checkouts: 0,
           vendas: 0,
           investimento: 0,
@@ -774,6 +889,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
         metricas.ctr = metricas.impressoes > 0 ? parseFloat(((metricas.cliques / metricas.impressoes) * 100).toFixed(2)) : 0;
         metricas.cpm = metricas.impressoes > 0 ? parseFloat(((metricas.investimento / metricas.impressoes) * 1000).toFixed(2)) : 0;
         metricas.cpc = metricas.cliques > 0 ? parseFloat((metricas.investimento / metricas.cliques).toFixed(2)) : 0;
+        metricas.leads_whatsapp = metricas.leads_whatsapp + metricas.leads_messenger;
+        metricas.leads_messenger = 0;
+        metricas.mensagens = metricas.leads_whatsapp;
         metricas.cpl = metricas.leads > 0 ? parseFloat((metricas.investimento / metricas.leads).toFixed(2)) : 0;
         metricas.taxa_conversao = metricas.leads > 0 ? parseFloat(((metricas.vendas / metricas.leads) * 100).toFixed(2)) : 0;
 
@@ -821,6 +939,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           cliques: 0,
           visualizacoes_pagina: 0,
           leads: 0,
+          leads_whatsapp: 0,
+          leads_messenger: 0,
+          mensagens: 0,
           checkouts: 0,
           vendas: 0,
           investimento: 0,
@@ -843,6 +964,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           cliques: 0,
           visualizacoes_pagina: 0,
           leads: 0,
+          leads_whatsapp: 0,
+          leads_messenger: 0,
+          mensagens: 0,
           checkouts: 0,
           vendas: 0,
           investimento: 0,
@@ -864,6 +988,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           cliques: acc.cliques + toNumber(m.cliques),
           visualizacoes_pagina: acc.visualizacoes_pagina + toNumber(m.visualizacoes_pagina),
           leads: acc.leads + toNumber(m.leads),
+          leads_whatsapp: acc.leads_whatsapp + toNumber(m.leads_whatsapp),
+          leads_messenger: acc.leads_messenger + toNumber(m.leads_messenger),
+          mensagens: acc.mensagens + toNumber(m.mensagens),
           checkouts: acc.checkouts + toNumber(m.checkouts),
           vendas: acc.vendas + toNumber(m.vendas),
           investimento: acc.investimento + toNumber(m.investimento),
@@ -880,6 +1007,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
           cliques: 0,
           visualizacoes_pagina: 0,
           leads: 0,
+          leads_whatsapp: 0,
+          leads_messenger: 0,
+          mensagens: 0,
           checkouts: 0,
           vendas: 0,
           investimento: 0,
@@ -897,6 +1027,9 @@ export function CampanhaProvider({ children }: CampanhaProviderProps) {
         metricas.ctr = metricas.impressoes > 0 ? parseFloat(((metricas.cliques / metricas.impressoes) * 100).toFixed(2)) : 0;
         metricas.cpm = metricas.impressoes > 0 ? parseFloat(((metricas.investimento / metricas.impressoes) * 1000).toFixed(2)) : 0;
         metricas.cpc = metricas.cliques > 0 ? parseFloat((metricas.investimento / metricas.cliques).toFixed(2)) : 0;
+        metricas.leads_whatsapp = metricas.leads_whatsapp + metricas.leads_messenger;
+        metricas.leads_messenger = 0;
+        metricas.mensagens = metricas.leads_whatsapp;
         metricas.cpl = metricas.leads > 0 ? parseFloat((metricas.investimento / metricas.leads).toFixed(2)) : 0;
         metricas.taxa_conversao = metricas.leads > 0 ? parseFloat(((metricas.vendas / metricas.leads) * 100).toFixed(2)) : 0;
 

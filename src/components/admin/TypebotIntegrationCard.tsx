@@ -82,7 +82,7 @@ interface NovaIntegracao {
 // Componente Principal
 // ============================================
 
-export function TypebotIntegrationCard() {
+export function TypebotIntegrationCard({ empresaId }: { empresaId?: string }) {
   const { isClean } = useTheme();
   const [integracoes, setIntegracoes] = useState<IntegracaoTypebot[]>([]);
   const [funis, setFunis] = useState<FunilOption[]>([]);
@@ -108,19 +108,29 @@ export function TypebotIntegrationCard() {
   });
   const [editMostrarToken, setEditMostrarToken] = useState(false);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
-  const [syncPeriodo, setSyncPeriodo] = useState(() => {
+  // Inicializar com strings vazias para evitar hydration mismatch (new Date() difere server/client)
+  const [syncPeriodo, setSyncPeriodo] = useState({ dataInicio: '', dataFim: '' });
+
+  // Hidratar datas apenas no client
+  useEffect(() => {
     const hoje = new Date();
     const seteDias = new Date(hoje);
     seteDias.setDate(hoje.getDate() - 6);
-    return {
+    setSyncPeriodo({
       dataInicio: seteDias.toISOString().split('T')[0],
       dataFim: hoje.toISOString().split('T')[0],
-    };
-  });
+    });
+  }, []);
+
+  const buildUrl = useCallback((path: string) => {
+    if (!empresaId) return path;
+    const sep = path.includes('?') ? '&' : '?';
+    return `${path}${sep}empresa_id=${empresaId}`;
+  }, [empresaId]);
 
   const carregarIntegracoes = useCallback(async () => {
     try {
-      const res = await fetch('/api/typebot/config');
+      const res = await fetch(buildUrl('/api/typebot/config'));
       if (!res.ok) throw new Error('Erro ao carregar');
       const data = await res.json();
       setIntegracoes(data.integracoes || []);
@@ -129,18 +139,18 @@ export function TypebotIntegrationCard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [buildUrl]);
 
   const carregarFunis = useCallback(async () => {
     try {
-      const res = await fetch('/api/funis');
+      const res = await fetch(buildUrl('/api/funis'));
       if (!res.ok) return;
       const data = await res.json();
       setFunis((data.funis || []).map((f: any) => ({ id: f.id, nome: f.nome })));
     } catch (error) {
       console.error('Erro ao carregar funis:', error);
     }
-  }, []);
+  }, [buildUrl]);
 
   useEffect(() => {
     carregarIntegracoes();
@@ -157,7 +167,7 @@ export function TypebotIntegrationCard() {
       return;
     }
     try {
-      const res = await fetch('/api/typebot/config', {
+      const res = await fetch(buildUrl('/api/typebot/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(novaIntegracao),
@@ -178,7 +188,7 @@ export function TypebotIntegrationCard() {
 
   const toggleAtivo = async (integracao: IntegracaoTypebot) => {
     try {
-      await fetch('/api/typebot/config', {
+      await fetch(buildUrl('/api/typebot/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: integracao.id, ativo: !integracao.ativo }),
@@ -236,7 +246,7 @@ export function TypebotIntegrationCard() {
       if (editForm.api_token.trim()) {
         payload.api_token = editForm.api_token;
       }
-      const res = await fetch('/api/typebot/config', {
+      const res = await fetch(buildUrl('/api/typebot/config'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -259,7 +269,7 @@ export function TypebotIntegrationCard() {
   const removerIntegracao = async (id: string) => {
     if (!confirm('Remover esta integracao?')) return;
     try {
-      await fetch(`/api/typebot/config?id=${id}`, { method: 'DELETE' });
+      await fetch(buildUrl(`/api/typebot/config?id=${id}`), { method: 'DELETE' });
       toast.success('Integracao removida');
       carregarIntegracoes();
     } catch (error: any) {
@@ -270,7 +280,7 @@ export function TypebotIntegrationCard() {
   const sincronizar = async (integracaoId: string, nome: string) => {
     setSincronizandoId(integracaoId);
     try {
-      const res = await fetch('/api/typebot/sync', {
+      const res = await fetch(buildUrl('/api/typebot/sync'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -304,7 +314,7 @@ export function TypebotIntegrationCard() {
   const carregarLogs = async (integracaoId: string) => {
     setLogsLoading(true);
     try {
-      const res = await fetch(`/api/typebot/sync?integracaoId=${integracaoId}&limit=10`);
+      const res = await fetch(buildUrl(`/api/typebot/sync?integracaoId=${integracaoId}&limit=10`));
       const data = await res.json();
       setLogs(data.logs || []);
     } catch (error) {

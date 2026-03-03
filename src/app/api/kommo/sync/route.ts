@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
-import { getOrCreateUsuario } from '@/lib/get-usuario';
+import { getOrCreateUsuario, resolveEmpresaId } from '@/lib/get-usuario';
 import { syncKommoToSupabase } from '@/lib/kommo-sync';
 import type { IntegracaoKommo, KommoPipeline } from '@/types/hierarchical';
 
@@ -23,6 +23,9 @@ export async function POST(request: NextRequest) {
     const usuario = await getOrCreateUsuario(supabase, session.user.id, session.user.email || '');
     if (!usuario) return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
 
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ error: 'Selecione uma empresa' }, { status: 400 });
+
     const body = await request.json().catch(() => ({}));
     const { integracao_id, pipeline_id, dataInicio, dataFim } = body;
 
@@ -35,7 +38,7 @@ export async function POST(request: NextRequest) {
       .from('integracoes_kommo')
       .select('*')
       .eq('id', integracao_id)
-      .eq('empresa_id', usuario.empresa_id)
+      .eq('empresa_id', empresaId)
       .eq('ativo', true)
       .single();
 
@@ -70,7 +73,7 @@ export async function POST(request: NextRequest) {
       const { data: logInserido } = await supabase
         .from('sync_logs_kommo')
         .insert({
-          empresa_id: usuario.empresa_id,
+          empresa_id: empresaId,
           integracao_id: integracao_id,
           pipeline_id_kommo: pipeline.pipeline_id_kommo,
           status: 'running',
@@ -164,6 +167,9 @@ export async function GET(request: NextRequest) {
     const usuario = await getOrCreateUsuario(supabase, session.user.id, session.user.email || '');
     if (!usuario) return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
 
+    const empresaId = resolveEmpresaId(usuario, request.url);
+    if (!empresaId) return NextResponse.json({ logs: [] });
+
     const { searchParams } = new URL(request.url);
     const integracaoId = searchParams.get('integracao_id');
     const limite = parseInt(searchParams.get('limit') || '20');
@@ -171,7 +177,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('sync_logs_kommo')
       .select('*')
-      .eq('empresa_id', usuario.empresa_id)
+      .eq('empresa_id', empresaId)
       .order('iniciado_em', { ascending: false })
       .limit(limite);
 

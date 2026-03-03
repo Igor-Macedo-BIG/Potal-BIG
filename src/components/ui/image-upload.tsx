@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useId, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Upload, X, Image } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -27,6 +27,8 @@ export function ImageUpload({
   placeholder = 'Clique para fazer upload da imagem'
 }: ImageUploadProps) {
   const [dragOver, setDragOver] = useState(false);
+  const stableId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (file: File) => {
     if (file && file.type.startsWith('image/')) {
@@ -96,7 +98,7 @@ export function ImageUpload({
         onDrop={handleDrop}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
-        onClick={() => document.getElementById(`file-input-${Math.random()}`)?.click()}
+        onClick={() => inputRef.current?.click()}
       >
         {src ? (
           <>
@@ -132,7 +134,8 @@ export function ImageUpload({
       </div>
 
       <input
-        id={`file-input-${Math.random()}`}
+        ref={inputRef}
+        id={`file-input-${stableId}`}
         type="file"
         accept="image/*"
         onChange={handleInputChange}
