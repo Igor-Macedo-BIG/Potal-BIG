@@ -24,6 +24,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, Zap, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { useCliente } from '@/contexts/ClienteContext';
 import type { Funil } from '@/types/hierarchical';
 
 interface Props {
@@ -50,6 +51,7 @@ interface FormData {
 }
 
 export default function ModalCriarCampanha({ funil, funilId, onCampanhaCriada, trigger }: Props) {
+  const { clienteSelecionado } = useCliente();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [etapaAtual, setEtapaAtual] = useState<'campanha' | 'conjuntos' | 'criativos'>('campanha');
@@ -89,6 +91,7 @@ export default function ModalCriarCampanha({ funil, funilId, onCampanhaCriada, t
           tipo: formData.tipo,
           funil_id: funilId || funil?.id,
           plataforma: formData.plataforma,
+          cliente_id: clienteSelecionado?.id || null,
         })
         .select()
         .single();

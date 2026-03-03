@@ -17,6 +17,7 @@ import { Calendar, Edit3, Loader2, TrendingUp, Users, MousePointer, Target, Doll
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import type { Campanha } from '@/types/hierarchical';
+import { useCliente } from '@/contexts/ClienteContext';
 
 interface Props {
   open: boolean;
@@ -48,6 +49,7 @@ export default function ModalEditarMetricas({
   filtrosIniciais,
   dataInicial
 }: Props) {
+  const { clienteSelecionado } = useCliente();
   const [loading, setLoading] = useState(false);
   const [funis, setFunis] = useState<any[]>([]);
   const [campanhasList, setCampanhasList] = useState<any[]>([]);
@@ -96,6 +98,7 @@ export default function ModalEditarMetricas({
     investimento: '0',
     faturamento: '0',
     investimento_trafego: '0',
+    observacoes: '', // Campo para alertas/observações do cliente
     // Campos SDR
     sdr_comecou_diagnostico: '0',
     sdr_chegaram_crm_kommo: '0',
@@ -190,6 +193,7 @@ export default function ModalEditarMetricas({
           investimento: metricas.investimento?.toString() || '0',
           faturamento: metricas.faturamento?.toString() || '0',
           investimento_trafego: metricas.investimento?.toString() || '0',
+          observacoes: metricas.observacoes || '', // Carregar observações existentes
           // Campos SDR do JSONB
           sdr_comecou_diagnostico: metricas.detalhe_sdr?.comecou_diagnostico?.toString() || '0',
           sdr_chegaram_crm_kommo: metricas.detalhe_sdr?.chegaram_crm_kommo?.toString() || '0',
@@ -247,6 +251,7 @@ export default function ModalEditarMetricas({
           investimento: '0',
           faturamento: '0',
           investimento_trafego: '0',
+          observacoes: '',
           // Campos SDR
           sdr_comecou_diagnostico: '0',
           sdr_chegaram_crm_kommo: '0',
@@ -389,6 +394,7 @@ export default function ModalEditarMetricas({
           investimento: metricasExistentes.investimento?.toString() || '0',
           faturamento: metricasExistentes.faturamento?.toString() || '0',
           investimento_trafego: metricasExistentes.investimento_trafego?.toString() || '0',
+          observacoes: metricasExistentes.observacoes || '',
           // SDR fields might be stored in metadata — try to load if present
           sdr_comecou_diagnostico: metricasExistentes.detalhe_sdr?.comecou_diagnostico?.toString?.() || metricasExistentes.detalhe?.comecou_diagnostico?.toString?.() || '0',
           sdr_chegaram_crm_kommo: metricasExistentes.detalhe_sdr?.chegaram_crm_kommo?.toString?.() || metricasExistentes.detalhe?.chegaram_crm_kommo?.toString?.() || '0',
@@ -433,6 +439,7 @@ export default function ModalEditarMetricas({
           investimento: '0',
           faturamento: '0',
           investimento_trafego: '0',
+          observacoes: '',
           sdr_comecou_diagnostico: '0',
           sdr_chegaram_crm_kommo: '0',
           sdr_qualificados_mentoria: '0',
@@ -574,7 +581,7 @@ export default function ModalEditarMetricas({
         setMonthlyStart(toISO(inicio));
       }
       if (!monthlyEnd) {
-        const base = new Date(formData.data);
+        const base = parseISO(formData.data);
         const hoje = new Date();
         const fimMes = new Date(base.getFullYear(), base.getMonth() + 1, 0);
         const dataFinal = (base.getFullYear() === hoje.getFullYear() && base.getMonth() === hoje.getMonth()) ? hoje : fimMes;
@@ -602,17 +609,25 @@ export default function ModalEditarMetricas({
   // Auto-preencher monthlyEnd quando monthlyStart mudar (mensal)
   useEffect(() => {
     if (tipoDistribuicao === 'mensal' && monthlyStart) {
-      const dataInicio = new Date(monthlyStart);
+      const dataInicio = parseISO(monthlyStart);
       const hoje = new Date();
-      const fimMes = new Date(dataInicio.getFullYear(), dataInicio.getMonth() + 1, 0);
       
-      // Se for o mês atual, usar hoje como fim, senão usar último dia do mês
-      const dataFinal = (dataInicio.getFullYear() === hoje.getFullYear() && dataInicio.getMonth() === hoje.getMonth()) 
-        ? hoje 
-        : fimMes;
+      // Zerar as horas para comparação apenas de datas
+      hoje.setHours(0, 0, 0, 0);
       
+      // Pegar o mês e ano da data de início selecionada
+      const mesInicio = dataInicio.getMonth();
+      const anoInicio = dataInicio.getFullYear();
+      
+      // Calcular o último dia do mês selecionado (não do mês seguinte!)
+      const fimMes = new Date(anoInicio, mesInicio + 1, 0);
+      fimMes.setHours(0, 0, 0, 0);
+      
+      // Se o mês selecionado já passou completamente, usa o último dia do mês
+      // Se ainda estamos no mês selecionado, usa hoje
+      const dataFinal = fimMes < hoje ? fimMes : hoje;
       const dataFimISO = dataFinal.toISOString().split('T')[0];
-      
+
       if (monthlyEnd !== dataFimISO) {
         setMonthlyEnd(dataFimISO);
       }
@@ -879,6 +894,7 @@ export default function ModalEditarMetricas({
       investimento: '0',
       faturamento: '0',
       investimento_trafego: '0',
+      observacoes: '', // Limpar observações
       sdr_comecou_diagnostico: '0',
       sdr_chegaram_crm_kommo: '0',
       sdr_qualificados_mentoria: '0',
@@ -1073,6 +1089,7 @@ export default function ModalEditarMetricas({
       investimento: metrica.investimento?.toString() || '0',
       faturamento: metrica.faturamento?.toString() || '0',
       investimento_trafego: metrica.investimento?.toString() || '0',
+      observacoes: metrica.observacoes || '',
       sdr_comecou_diagnostico: metrica.detalhe_sdr?.comecou_diagnostico?.toString() || '0',
       sdr_chegaram_crm_kommo: metrica.detalhe_sdr?.chegaram_crm_kommo?.toString() || '0',
       sdr_qualificados_mentoria: metrica.detalhe_sdr?.qualificados_para_mentoria?.toString() || '0',
@@ -1251,6 +1268,57 @@ export default function ModalEditarMetricas({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // 🛡️ PROTEÇÃO: Se está editando uma métrica existente e SOMENTE a observação foi alterada,
+    // fazer UPDATE apenas do campo observacoes sem tocar nos outros dados
+    if (modoAtual === 'editar' && metricaExistente) {
+      const camposNumericos = [
+        'alcance', 'impressoes', 'cliques', 'visualizacoes_pagina', 'leads', 
+        'checkouts', 'vendas', 'investimento', 'faturamento', 'investimento_trafego',
+        'sdr_comecou_diagnostico', 'sdr_chegaram_crm_kommo', 'sdr_qualificados_mentoria',
+        'sdr_para_downsell', 'sdr_agendados_diagnostico', 'sdr_agendados_mentoria',
+        'closer_calls_realizadas', 'closer_nao_compareceram', 'closer_vendas_mentoria',
+        'closer_vendas_downsell', 'closer_em_negociacao', 'closer_em_followup', 'closer_vendas_perdidas',
+        'social_seller_leads_contatados', 'social_seller_agendados_diagnostico',
+        'social_seller_agendados_mentoria', 'social_seller_agendados_consultoria', 'social_seller_downsell_vendido',
+        'cs_alunas_contatadas', 'cs_suporte_prestado', 'cs_suporte_resolvidos', 
+        'cs_suporte_pendentes', 'cs_produtos_vendidos'
+      ];
+      
+      const todosOsCamposZerados = camposNumericos.every(campo => 
+        formData[campo as keyof typeof formData] === '0' || formData[campo as keyof typeof formData] === ''
+      );
+      
+      // Se todos os campos numéricos estão zerados, atualizar APENAS observacoes
+      if (todosOsCamposZerados) {
+        setLoading(true);
+        try {
+          const { error } = await supabase
+            .from('metricas')
+            .update({ observacoes: formData.observacoes || null })
+            .eq('id', metricaExistente.id);
+          
+          if (error) {
+            console.error('Erro ao atualizar observações:', error);
+            toast.error('Erro ao salvar observações');
+            return;
+          }
+          
+          toast.success('✅ Observações atualizadas!', {
+            description: 'Métricas numéricas preservadas.'
+          });
+          
+          onDadosAtualizados?.();
+          onOpenChange(false);
+        } catch (err) {
+          console.error('Erro:', err);
+          toast.error('Erro ao atualizar');
+        } finally {
+          setLoading(false);
+        }
+        return; // Sair da função sem executar o resto
+      }
+    }
+    
     // Validar campos obrigatórios de data conforme tipo de distribuição
     if (tipoDistribuicao === 'semanal') {
       if (!weeklyStart || !weeklyEnd) {
@@ -1405,6 +1473,7 @@ export default function ModalEditarMetricas({
         return {
           tipo: tipo,
           referencia_id: referenciaId,
+          cliente_id: clienteSelecionado?.id || null,
           periodo_inicio: data,
           periodo_fim: data,
           alcance: alcanceFinal,
@@ -1421,7 +1490,8 @@ export default function ModalEditarMetricas({
           cpm: parseFloat(cpm.toFixed(2)),
           cpc: parseFloat(cpc.toFixed(2)),
           cpl: parseFloat(cpl.toFixed(2)),
-          taxa_conversao: parseFloat(taxa_conversao.toFixed(2))
+          taxa_conversao: parseFloat(taxa_conversao.toFixed(2)),
+          observacoes: formData.observacoes || null // Incluir observações para alertas do cliente
         };
       });
 
@@ -1711,6 +1781,7 @@ export default function ModalEditarMetricas({
         investimento: '0',
         faturamento: '0',
         investimento_trafego: '0',
+        observacoes: '', // Limpar observações após salvar
         sdr_comecou_diagnostico: '0',
         sdr_chegaram_crm_kommo: '0',
         sdr_qualificados_mentoria: '0',
@@ -2652,6 +2723,25 @@ export default function ModalEditarMetricas({
               />
             </div>
           )}
+
+          {/* Observações / Alertas para o Cliente */}
+          <div className="space-y-2 border-t border-gray-700 pt-4">
+            <Label htmlFor="observacoes" className="text-gray-300 flex items-center gap-2">
+              <span className="text-lg">🔔</span>
+              <span>Alertas / Observações para o Cliente</span>
+            </Label>
+            <p className="text-xs text-gray-400 mb-2">
+              Escreva alertas importantes que serão exibidos para o cliente no dashboard público durante este período.
+            </p>
+            <textarea
+              id="observacoes"
+              value={formData.observacoes}
+              onChange={(e) => handleInputChange('observacoes', e.target.value)}
+              placeholder="Ex: Campanha com bom desempenho, aumentar investimento na próxima semana..."
+              className="w-full bg-gray-800 border border-gray-600 text-white px-3 py-2 rounded-md min-h-[100px] resize-y focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+              disabled={loading}
+            />
+          </div>
 
           <DialogFooter className="gap-2">
             <div className="flex items-center justify-between w-full gap-2">
