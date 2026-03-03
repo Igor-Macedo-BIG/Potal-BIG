@@ -363,7 +363,8 @@ export default function ModalEditarMetricas({
           cs_suporte_prestado: metricas.detalhe_cs?.suporte_prestado?.toString() || '0',
           cs_suporte_resolvidos: metricas.detalhe_cs?.suporte_resolvidos?.toString() || '0',
           cs_suporte_pendentes: metricas.detalhe_cs?.suporte_pendentes?.toString() || '0',
-          cs_produtos_vendidos: metricas.detalhe_cs?.produtos_vendidos?.toString() || '0'
+          cs_produtos_vendidos: metricas.detalhe_cs?.produtos_vendidos?.toString() || '0',
+          observacoes: metricas.observacoes || ''
         });
       } else {
         console.log('ℹ️ Nenhuma métrica encontrada para este criativo');
