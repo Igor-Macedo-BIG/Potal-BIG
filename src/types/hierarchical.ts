@@ -118,6 +118,8 @@ export interface MetricasAgregadas {
   vendas: number;
   investimento: number;
   faturamento: number;
+  visitas_perfil: number;
+  video_views: number;
   roas: number;
   ctr: number;
   cpm: number;

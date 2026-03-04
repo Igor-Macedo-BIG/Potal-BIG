@@ -601,3 +601,41 @@ export function extractMessengerLeadsFromActions(actions?: MetaInsight['actions'
 export function extractMessagesFromActions(actions?: MetaInsight['actions']): number {
   return extractWhatsAppLeadsFromActions(actions) + extractMessengerLeadsFromActions(actions);
 }
+
+/**
+ * Extrai visitas ao perfil do Instagram/Facebook
+ * Meta API action_types:
+ * - page_engagement (engajamento com a página)
+ * - onsite_conversion.profile_visit (visitas ao perfil IG/FB)
+ * - profile_visit (visitas genéricas ao perfil)
+ */
+export function extractProfileVisitsFromActions(actions?: MetaInsight['actions']): number {
+  if (!actions) return 0;
+  let total = 0;
+  for (const a of actions) {
+    if (
+      a.action_type === 'onsite_conversion.profile_visit' ||
+      a.action_type === 'profile_visit'
+    ) {
+      total += parseInt(a.value, 10) || 0;
+    }
+  }
+  return total;
+}
+
+/**
+ * Extrai reproduções de vídeo (3 segundos+)
+ * Meta API action_types:
+ * - video_view (reproduções de vídeo padrão - 3s+)
+ * - onsite_conversion.post_save (alternativa)
+ */
+export function extractVideoViewsFromActions(actions?: MetaInsight['actions']): number {
+  if (!actions) return 0;
+  let total = 0;
+  for (const a of actions) {
+    if (a.action_type === 'video_view') {
+      total += parseInt(a.value, 10) || 0;
+    }
+  }
+  return total;
+}

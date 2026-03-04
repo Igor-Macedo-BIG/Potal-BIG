@@ -22,8 +22,10 @@ function agregarMetricas(metricasArray: any[]) {
       vendas: acc.vendas + toNum(m.vendas),
       investimento: acc.investimento + toNum(m.investimento),
       faturamento: acc.faturamento + toNum(m.faturamento),
+      visitas_perfil: acc.visitas_perfil + toNum(m.visitas_perfil),
+      video_views: acc.video_views + toNum(m.video_views),
     }),
-    { alcance: 0, impressoes: 0, cliques: 0, visualizacoes_pagina: 0, leads: 0, leads_whatsapp: 0, leads_messenger: 0, mensagens: 0, checkouts: 0, vendas: 0, investimento: 0, faturamento: 0 }
+    { alcance: 0, impressoes: 0, cliques: 0, visualizacoes_pagina: 0, leads: 0, leads_whatsapp: 0, leads_messenger: 0, mensagens: 0, checkouts: 0, vendas: 0, investimento: 0, faturamento: 0, visitas_perfil: 0, video_views: 0 }
   );
 
   // Combinar tudo em WhatsApp (dados antigos podem estar em leads_messenger)
@@ -40,12 +42,13 @@ function agregarMetricas(metricasArray: any[]) {
     cpc: agregado.cliques > 0 ? parseFloat((agregado.investimento / agregado.cliques).toFixed(2)) : 0,
     cpl: agregado.leads > 0 ? parseFloat((agregado.investimento / agregado.leads).toFixed(2)) : 0,
     custo_por_mensagem: agregado.mensagens > 0 ? parseFloat((agregado.investimento / agregado.mensagens).toFixed(2)) : 0,
+    custo_por_visita_perfil: agregado.visitas_perfil > 0 ? parseFloat((agregado.investimento / agregado.visitas_perfil).toFixed(2)) : 0,
   };
 
   return metricas;
 }
 
-const SELECT_FIELDS = 'alcance, impressoes, cliques, visualizacoes_pagina, leads, leads_whatsapp, leads_messenger, mensagens, checkouts, vendas, investimento, faturamento';
+const SELECT_FIELDS = 'alcance, impressoes, cliques, visualizacoes_pagina, leads, leads_whatsapp, leads_messenger, mensagens, checkouts, vendas, investimento, faturamento, visitas_perfil, video_views';
 
 export async function GET(
   request: NextRequest,

@@ -26,6 +26,7 @@ import {
   ChevronRight,
   ChevronLeft,
   X,
+  Play,
 } from 'lucide-react';
 
 interface MetricaConfig {
@@ -72,6 +73,9 @@ const ICONE_MAP: Record<string, any> = {
   faturamento: DollarSign,
   cpm: BarChart3,
   cpc: Target,
+  visitas_perfil: Eye,
+  custo_por_visita_perfil: DollarSign,
+  video_views: Play,
 };
 
 // Cores vibrantes para dark e light — glow no dark
@@ -93,12 +97,15 @@ const GLOW_MAP: Record<string, { gradient: string; glow: string; ring: string; i
   faturamento:             { gradient: 'from-yellow-300 to-amber-500', glow: 'shadow-yellow-500/25', ring: 'ring-yellow-500/30',  icon: 'text-yellow-400', lightGrad: 'from-yellow-500 to-amber-500' },
   cpm:                     { gradient: 'from-slate-400 to-zinc-500',   glow: 'shadow-slate-500/25',  ring: 'ring-slate-500/30',   icon: 'text-slate-400',  lightGrad: 'from-slate-500 to-zinc-500' },
   cpc:                     { gradient: 'from-orange-400 to-red-500',   glow: 'shadow-orange-500/25', ring: 'ring-orange-500/30',  icon: 'text-orange-400', lightGrad: 'from-orange-500 to-red-500' },
+  visitas_perfil:            { gradient: 'from-teal-400 to-emerald-500',glow: 'shadow-teal-500/25',   ring: 'ring-teal-500/30',    icon: 'text-teal-400',   lightGrad: 'from-teal-500 to-emerald-500' },
+  custo_por_visita_perfil:   { gradient: 'from-amber-400 to-yellow-500',glow: 'shadow-amber-500/25',  ring: 'ring-amber-500/30',   icon: 'text-amber-400',  lightGrad: 'from-amber-500 to-yellow-500' },
+  video_views:               { gradient: 'from-pink-400 to-rose-500',  glow: 'shadow-pink-500/25',   ring: 'ring-pink-500/30',    icon: 'text-pink-400',   lightGrad: 'from-pink-500 to-rose-500' },
 };
 
 const DEFAULT_GLOW = { gradient: 'from-gray-400 to-gray-500', glow: 'shadow-gray-500/25', ring: 'ring-gray-500/30', icon: 'text-gray-400', lightGrad: 'from-gray-500 to-gray-600' };
 
 // Métricas de custo: menor = melhor (inverte trend)
-const METRICAS_CUSTO = new Set(['cpl', 'cpc', 'cpm', 'custo_por_mensagem']);
+const METRICAS_CUSTO = new Set(['cpl', 'cpc', 'cpm', 'custo_por_mensagem', 'custo_por_visita_perfil']);
 
 function formatarValor(key: string, value: number): string {
   if (value === 0 || value === undefined || value === null) return '—';
@@ -109,6 +116,7 @@ function formatarValor(key: string, value: number): string {
     case 'cpm':
     case 'cpc':
     case 'custo_por_mensagem':
+    case 'custo_por_visita_perfil':
       return `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     case 'ctr':
       return `${value.toFixed(2)}%`;

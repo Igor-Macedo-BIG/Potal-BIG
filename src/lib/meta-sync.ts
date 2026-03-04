@@ -23,7 +23,9 @@ import {
   extractPageViewsFromActions,
   extractMessagesFromActions,
   extractWhatsAppLeadsFromActions,
-  extractMessengerLeadsFromActions
+  extractMessengerLeadsFromActions,
+  extractProfileVisitsFromActions,
+  extractVideoViewsFromActions
 } from '@/lib/meta-client';
 
 // ============================================
@@ -849,6 +851,8 @@ function convertInsightToMetrica(
   const leads_whatsapp = extractWhatsAppLeadsFromActions(insight.actions);
   const leads_messenger = extractMessengerLeadsFromActions(insight.actions);
   const mensagens = leads_whatsapp + leads_messenger;
+  const visitas_perfil = extractProfileVisitsFromActions(insight.actions);
+  const video_views = extractVideoViewsFromActions(insight.actions);
 
   // ATENÇÃO: NÃO incluir roas, ctr, cpm, cpc, cpl, taxa_conversao — são GENERATED ALWAYS no banco
   return {
@@ -867,7 +871,9 @@ function convertInsightToMetrica(
     faturamento: 0,
     mensagens,
     leads_whatsapp,
-    leads_messenger
+    leads_messenger,
+    visitas_perfil,
+    video_views
   };
 }
 

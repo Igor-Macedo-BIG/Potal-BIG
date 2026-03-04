@@ -14,7 +14,7 @@ import ModalEditarMetricas from '@/components/modals/ModalEditarMetricas';
 import { useTheme } from '@/contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 
-import { TrendingUp, Users, MousePointer, Target, Zap, Rocket, Brain, Star, Edit3, Plus, DollarSign, UserCheck, ShoppingCart, Megaphone, Phone, Handshake, HeadphonesIcon, Eye, BarChart3, Calendar, MessageCircle, Clock, Award, TrendingDown, Filter, Share2, X } from 'lucide-react';
+import { TrendingUp, Users, MousePointer, Target, Zap, Rocket, Brain, Star, Edit3, Plus, DollarSign, UserCheck, ShoppingCart, Megaphone, Phone, Handshake, HeadphonesIcon, Eye, BarChart3, Calendar, MessageCircle, Clock, Award, TrendingDown, Filter, Share2, X, Play } from 'lucide-react';
 
 // Componente de Abas dos Departamentos - Estilo Funil de Conversão
 function DashboardTabs() {
@@ -584,6 +584,11 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
       } catch { return 1; }
     })();
     const mediaDiariaMensagens = totalMensagens > 0 ? totalMensagens / diasNoPeriodo : 0;
+
+    // Calcular métricas derivadas de visitas ao perfil e vídeo
+    const custoPorVisitaPerfil = metricasParaExibir && metricasParaExibir.visitas_perfil > 0
+      ? metricasParaExibir.investimento / metricasParaExibir.visitas_perfil
+      : 0;
 
     // ── Métricas do período anterior (comparação) ──
     const [metricasAnteriores, setMetricasAnteriores] = useState<any>(null);
@@ -1432,6 +1437,9 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
       const prevRoas = prevInvest > 0 ? prevFat / prevInvest : 0;
       const prevCpl = prevLeads > 0 ? prevInvest / prevLeads : 0;
       const prevCpm = prevMsg > 0 ? prevInvest / prevMsg : 0;
+      const prevVp = prev.visitas_perfil || 0;
+      const prevVv = prev.video_views || 0;
+      const prevCpvp = prevVp > 0 ? prevInvest / prevVp : 0;
 
       return [
       {
@@ -1514,6 +1522,33 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
         percentage: Math.min(mediaDiariaMensagens * 5, 100),
         gradient: 'from-indigo-500/20 to-blue-500/20',
         description: metricasAnteriores ? descComp(mediaDiariaMensagens, prevMsg > 0 ? prevMsg / diasNoPeriodo : 0) : `Média por dia (${diasNoPeriodo} dias)`
+      },
+      {
+        title: 'Visitas ao Perfil',
+        value: metricasParaExibir.visitas_perfil > 0 ? metricasParaExibir.visitas_perfil.toLocaleString('pt-BR') : 'Não informado',
+        trend: trendFromDiff(metricasParaExibir.visitas_perfil, prevVp),
+        icon: <Eye className="h-5 w-5" />,
+        percentage: metricasAnteriores ? Math.abs(diffPct(metricasParaExibir.visitas_perfil, prevVp)) : Math.min(metricasParaExibir.visitas_perfil / 10, 100),
+        gradient: 'from-teal-500/20 to-cyan-500/20',
+        description: metricasAnteriores ? descComp(metricasParaExibir.visitas_perfil, prevVp) : 'Clicaram para visitar o perfil'
+      },
+      {
+        title: 'Custo por Visita ao Perfil',
+        value: custoPorVisitaPerfil > 0 ? `R$ ${custoPorVisitaPerfil.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'Não informado',
+        trend: trendCusto(custoPorVisitaPerfil, prevCpvp),
+        icon: <DollarSign className="h-5 w-5" />,
+        percentage: metricasAnteriores ? Math.abs(diffPct(custoPorVisitaPerfil, prevCpvp)) : (custoPorVisitaPerfil > 0 ? Math.max(100 - custoPorVisitaPerfil, 10) : 0),
+        gradient: 'from-amber-500/20 to-orange-500/20',
+        description: metricasAnteriores ? descComp(custoPorVisitaPerfil, prevCpvp) : 'Investimento / visitas ao perfil'
+      },
+      {
+        title: 'Reproduções de Vídeo',
+        value: metricasParaExibir.video_views > 0 ? metricasParaExibir.video_views.toLocaleString('pt-BR') : 'Não informado',
+        trend: trendFromDiff(metricasParaExibir.video_views, prevVv),
+        icon: <Play className="h-5 w-5" />,
+        percentage: metricasAnteriores ? Math.abs(diffPct(metricasParaExibir.video_views, prevVv)) : Math.min(metricasParaExibir.video_views / 50, 100),
+        gradient: 'from-pink-500/20 to-rose-500/20',
+        description: metricasAnteriores ? descComp(metricasParaExibir.video_views, prevVv) : 'Total de reproduções de vídeo'
       }
     ];
     })() : [
@@ -1596,6 +1631,33 @@ export function DashboardCampanha({ defaultTitle = 'Dashboard Geral', showEditBu
         icon: <BarChart3 className="h-5 w-5" />,
         percentage: 0,
         gradient: 'from-indigo-500/20 to-blue-500/20',
+        description: 'Selecione uma campanha'
+      },
+      {
+        title: 'Visitas ao Perfil',
+        value: 'Não informado',
+        trend: 'stable' as const,
+        icon: <Eye className="h-5 w-5" />,
+        percentage: 0,
+        gradient: 'from-teal-500/20 to-cyan-500/20',
+        description: 'Selecione uma campanha'
+      },
+      {
+        title: 'Custo por Visita ao Perfil',
+        value: 'Não informado',
+        trend: 'stable' as const,
+        icon: <DollarSign className="h-5 w-5" />,
+        percentage: 0,
+        gradient: 'from-amber-500/20 to-orange-500/20',
+        description: 'Selecione uma campanha'
+      },
+      {
+        title: 'Reproduções de Vídeo',
+        value: 'Não informado',
+        trend: 'stable' as const,
+        icon: <Play className="h-5 w-5" />,
+        percentage: 0,
+        gradient: 'from-pink-500/20 to-rose-500/20',
         description: 'Selecione uma campanha'
       }
     ];  // Dados da campanha para a tabela

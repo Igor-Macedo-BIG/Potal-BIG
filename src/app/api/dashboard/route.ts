@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       // Admin sem empresa selecionada: retornar métricas vazias
       if (!usuario.empresa_id && (usuario.role === 'admin' || usuario.role === 'gestor')) {
         return NextResponse.json({
-          metricas: { alcance: 0, impressoes: 0, cliques: 0, visualizacoes_pagina: 0, leads: 0, leads_whatsapp: 0, leads_messenger: 0, mensagens: 0, checkouts: 0, vendas: 0, investimento: 0, faturamento: 0, roas: 0, ctr: 0, cpm: 0, cpc: 0, cpl: 0, taxa_conversao: 0 },
+          metricas: { alcance: 0, impressoes: 0, cliques: 0, visualizacoes_pagina: 0, leads: 0, leads_whatsapp: 0, leads_messenger: 0, mensagens: 0, checkouts: 0, vendas: 0, investimento: 0, faturamento: 0, visitas_perfil: 0, video_views: 0, roas: 0, ctr: 0, cpm: 0, cpc: 0, cpl: 0, taxa_conversao: 0 },
           series_tempo: [],
           hierarquia: [],
         });
@@ -156,6 +156,8 @@ function agregarMetricas(metricas: any[]): MetricasAgregadas {
     vendas: acc.vendas + (metrica.vendas || 0),
     investimento: acc.investimento + (metrica.investimento || 0),
     faturamento: acc.faturamento + (metrica.faturamento || 0),
+    visitas_perfil: acc.visitas_perfil + (metrica.visitas_perfil || 0),
+    video_views: acc.video_views + (metrica.video_views || 0),
   }), {
     alcance: 0,
     impressoes: 0,
@@ -169,6 +171,8 @@ function agregarMetricas(metricas: any[]): MetricasAgregadas {
     vendas: 0,
     investimento: 0,
     faturamento: 0,
+    visitas_perfil: 0,
+    video_views: 0,
   });
 
   // Combinar tudo em WhatsApp (dados antigos podem estar em leads_messenger)
